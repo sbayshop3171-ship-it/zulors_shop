@@ -1,0 +1,55 @@
+.DS_Store
+**/.DS_Store
+**/.idea/
+**/.vscode/
+**/.qodo/
+**/*.log
+**/*.map
+**/.gradle/
+**/.cxx/
+**/.plugin_symlinks/
+**/linux/flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+**/ios/Pods/
+
+# Laravel admin/web runtime and secrets
+Zulors Shop Admin and Web V15.7/.env
+Zulors Shop Admin and Web V15.7/.env.backup
+Zulors Shop Admin and Web V15.7/storage/*.key
+Zulors Shop Admin and Web V15.7/storage/data/*.json
+Zulors Shop Admin and Web V15.7/storage/app/**
+!Zulors Shop Admin and Web V15.7/storage/app/.gitignore
+Zulors Shop Admin and Web V15.7/storage/framework/maintenance.php
+Zulors Shop Admin and Web V15.7/storage/framework/cache/**
+Zulors Shop Admin and Web V15.7/storage/framework/sessions/**
+Zulors Shop Admin and Web V15.7/storage/framework/views/**
+Zulors Shop Admin and Web V15.7/storage/logs/**
+Zulors Shop Admin and Web V15.7/bootstrap/cache/*.php
+Zulors Shop Admin and Web V15.7/public/storage
+Zulors Shop Admin and Web V15.7/public/storage/
+Zulors Shop Admin and Web V15.7/vendor/
+Zulors Shop Admin and Web V15.7/node_modules/
+Zulors Shop Admin and Web V15.7/backup.json
+Zulors Shop Admin and Web V15.7/composer.phar
+Zulors Shop Admin and Web V15.7/.rnd
+
+# Flutter app secrets
+Zulors Shop User App/android/app/google-services.json
+Zulors Shop User App/ios/GoogleService-Info.plist
+Zulors Shop Vendor App/android/app/google-services.json
+Zulors Shop Vendor App/ios/GoogleService-Info.plist
+
+# Flutter build caches
+Zulors Shop User App/.dart_tool/
+Zulors Shop User App/.flutter-plugins
+Zulors Shop User App/.flutter-plugins-dependencies
+Zulors Shop User App/.pub/
+Zulors Shop User App/build/
+Zulors Shop Vendor App/.dart_tool/
+Zulors Shop Vendor App/.flutter-plugins
+Zulors Shop Vendor App/.flutter-plugins-dependencies
+Zulors Shop Vendor App/.pub/
+Zulors Shop Vendor App/build/
+
+# Local download artifacts
+Download More Apps Source.html

@@ -1,0 +1,22 @@
+import 'dart:io';
+import 'package:zulors_shop/interface/repo_interface.dart';
+
+abstract class OrderDetailsRepositoryInterface<T> extends RepositoryInterface{
+
+  Future<dynamic> getOrderFromOrderId(String orderID);
+
+  Future<dynamic> getOrderInvoice(String orderID);
+
+  Future<dynamic> downloadDigitalProduct(int orderDetailsId);
+
+  Future<dynamic> resendOtpForDigitalProduct(int orderId);
+
+  Future<dynamic> otpVerificationForDigitalProduct(int orderId, String otp);
+
+  Future<dynamic> trackYourOrder(String orderId, String phoneNumber);
+
+  Future<dynamic> getTrackOrderDetailsId(String orderId);
+
+  Future<HttpClientResponse> productDownload(String url);
+
+}

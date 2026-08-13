@@ -1,0 +1,50 @@
+name: Repository Health
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  laravel-php-syntax:
+    name: Laravel PHP Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: curl, dom, fileinfo, gd, intl, mbstring, mysqli, openssl, zip
+
+      - name: Lint Laravel PHP files
+        working-directory: Zulors Shop Admin and Web V15.7
+        run: |
+          find app bootstrap config database routes tests Modules -type f -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+  flutter-pub-check:
+    name: Flutter Pub Check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app:
+          - Zulors Shop User App
+          - Zulors Shop Vendor App
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Resolve Flutter dependencies
+        working-directory: ${{ matrix.app }}
+        run: flutter pub get

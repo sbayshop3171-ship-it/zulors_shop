@@ -1,0 +1,9 @@
+
+
+abstract class EmergencyServiceInterface {
+  Future<dynamic> getEmergencyContactList(String? key);
+  Future<dynamic> addNewEmergencyContact(String name, String phone,int? id, {bool isUpdate = false});
+  Future<dynamic> deleteEmergencyContact(int? id);
+  Future<dynamic> statusOnOffEmergencyContact(int? id, int status);
+  Future<dynamic> getEmergencyContactListSearch(String? key);
+}
