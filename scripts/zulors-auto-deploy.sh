@@ -10,6 +10,7 @@ LIVE_APP_DIR="/var/www/zulors/data/www/shop.zulors.com"
 LAST_DEPLOY_FILE="/root/zulors-deploy-cache/zulors_shop.last_deployed"
 APP_OWNER="zulors"
 APP_GROUP="zulors"
+export COMPOSER_ALLOW_SUPERUSER=1
 
 mkdir -p "$(dirname "$REPO_CACHE_DIR")"
 
@@ -54,7 +55,9 @@ php artisan migrate --force
 php artisan optimize:clear
 php artisan config:cache
 php artisan view:cache
-php artisan storage:link || true
+if [ ! -L public/storage ]; then
+  php artisan storage:link || true
+fi
 
 chown -R "$APP_OWNER:$APP_GROUP" storage bootstrap/cache
 
