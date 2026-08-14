@@ -10,7 +10,7 @@
                                 <li class="{{ $category->childes->count() > 0 ? 'has-sub-item' : '' }}">
                                     <a href="{{ route('category-products', ['slug' => $category['slug']]) }}">
                                         <span class="d-flex gap-10px justify-content-start align-items-center">
-                                            <img class="aspect-1 rounded-circle" width="20" src="{{ getStorageImages(path: $category?->icon_full_url, type: 'category') }}" alt="{{ $category['name'] }}">
+                                            <img loading="lazy" decoding="async" class="aspect-1 rounded-circle" width="20" src="{{ getStorageImages(path: $category?->icon_full_url, type: 'category') }}" alt="{{ $category['name'] }}">
                                             <span class="line--limit-2">{{ $category->name }}</span>
                                         </span>
                                         @if ($category->childes->count() > 0)
@@ -48,11 +48,14 @@
             @endif
 
             <div class="col-12 col-xl-9 __top-slider-images">
-                <div class="{{Session::get('direction') === "rtl" ? 'pr-xl-2' : 'pl-xl-2'}}">
-                    <div class="owl-theme owl-carousel hero-slider" data-loop="{{ count($bannerTypeMainBanner) > 1 ? 1 : 0 }}">
-                        @foreach($bannerTypeMainBanner as $key=>$banner)
-                            <a href="{{$banner['url']}}" class="d-block" target="_blank">
+                    <div class="{{Session::get('direction') === "rtl" ? 'pr-xl-2' : 'pl-xl-2'}}">
+                        <div class="owl-theme owl-carousel hero-slider" data-loop="{{ count($bannerTypeMainBanner) > 1 ? 1 : 0 }}">
+                            @foreach($bannerTypeMainBanner as $key=>$banner)
+                                <a href="{{$banner['url']}}" class="d-block" target="_blank">
                                 <img class="w-100 __slide-img __slide-img-170" alt=""
+                                    loading="{{ $loop->first ? 'eager' : 'lazy' }}"
+                                    fetchpriority="{{ $loop->first ? 'high' : 'auto' }}"
+                                    decoding="async"
                                     src="{{ getStorageImages(path: $banner->photo_full_url, type: 'banner') }}">
                             </a>
                         @endforeach

@@ -65,6 +65,13 @@ Route::get('/image-proxy', function () {
         ->header('Access-Control-Allow-Origin', '*');
 });
 
+Route::get('/zulors-sw.js', function () {
+    return response()->file(public_path('zulors-sw.js'), [
+        'Content-Type' => 'application/javascript; charset=utf-8',
+        'Cache-Control' => 'no-cache, no-store, must-revalidate',
+    ]);
+});
+
 
 Route::controller(WebController::class)->group(function () {
     Route::get('maintenance-mode', 'maintenance_mode')->name('maintenance-mode');

@@ -215,7 +215,15 @@
 <script src="{{ theme_asset(path: 'public/assets/front-end/js/slick.js') }}"></script>
 <script src="{{ theme_asset(path: 'public/assets/front-end/js/sweet_alert.js') }}"></script>
 <script src="{{ theme_asset(path: "public/assets/back-end/js/toastr.js") }}"></script>
-<script src="{{ theme_asset(path: 'public/assets/front-end/js/custom.js') }}"></script>
+<script src="{{ theme_asset(path: 'public/assets/front-end/js/custom.js') }}?v={{ file_exists(public_path('assets/front-end/js/custom.js')) ? filemtime(public_path('assets/front-end/js/custom.js')) : time() }}"></script>
+<script>
+    window.zulorsInstantNavigationConfig = {
+        enabled: true,
+        prefetchLimit: 30,
+        serviceWorkerUrl: "{{ url('zulors-sw.js') }}?v={{ file_exists(public_path('zulors-sw.js')) ? filemtime(public_path('zulors-sw.js')) : time() }}"
+    };
+</script>
+<script src="{{ theme_asset(path: 'public/assets/front-end/js/instant-navigation.js') }}?v={{ file_exists(public_path('assets/front-end/js/instant-navigation.js')) ? filemtime(public_path('assets/front-end/js/instant-navigation.js')) : time() }}"></script>
 <script src="{{ theme_asset(path: 'public/assets/front-end/js/seller-filter.js') }}"></script>
 <script src="{{ theme_asset(path: 'public/assets/front-end/js/account-order-details.js') }}"></script>
 <script src="{{ dynamicAsset(path: 'public/assets/backend/libs/intl-tel-input/js/intlTelInput.js') }}"></script>

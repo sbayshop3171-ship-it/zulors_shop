@@ -6,6 +6,10 @@
     <link rel="stylesheet" href="{{theme_asset(path: 'public/assets/front-end/css/home.css')}}"/>
     <link rel="stylesheet" href="{{ theme_asset(path: 'public/assets/front-end/css/owl.carousel.min.css') }}">
     <link rel="stylesheet" href="{{ theme_asset(path: 'public/assets/front-end/css/owl.theme.default.min.css') }}">
+    @php($heroBanner = $bannerTypeMainBanner[0] ?? null)
+    @if($heroBanner)
+        <link rel="preload" as="image" href="{{ getStorageImages(path: $heroBanner->photo_full_url, type: 'banner') }}" fetchpriority="high">
+    @endif
 @endpush
 
 @section('content')
@@ -272,4 +276,3 @@
     <script src="{{theme_asset(path: 'public/assets/front-end/js/owl.carousel.min.js')}}"></script>
     <script src="{{ theme_asset(path: 'public/assets/front-end/js/home.js') }}"></script>
 @endpush
-
