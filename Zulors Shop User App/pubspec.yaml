@@ -69,7 +69,7 @@ dependencies:
   open_file: ^3.5.10
   flutter_pdfview: ^1.4.3
   readmore: ^3.0.0
-  open_file_manager: ^2.0.1
+  open_file_manager: 2.0.1
   audioplayers: ^6.5.1
   syncfusion_flutter_pdfviewer: ^31.2.10
   firebase_auth: ^6.1.2

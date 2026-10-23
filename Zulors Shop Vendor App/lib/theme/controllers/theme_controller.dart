@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zulors_shop_vendor/utill/app_constants.dart';
 
@@ -10,6 +10,14 @@ class ThemeController with ChangeNotifier {
 
   bool _darkTheme = true;
   bool get darkTheme => _darkTheme;
+  Color? selectedPrimaryColor;
+  Color? selectedSecondaryColor;
+
+  void setThemeColor({Color? primaryColor, Color? secondaryColor}) {
+    selectedPrimaryColor = primaryColor ?? selectedPrimaryColor;
+    selectedSecondaryColor = secondaryColor ?? selectedSecondaryColor;
+    notifyListeners();
+  }
 
   void toggleTheme() {
     _darkTheme = !_darkTheme;

@@ -41,7 +41,6 @@ use App\Http\Controllers\Web\UserProfileController;
 use App\Http\Controllers\Web\UserWalletController;
 use App\Http\Controllers\Web\WebController;
 use App\Http\Middleware\VerifyCsrfToken;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -54,17 +53,6 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "web" middleware group. Make something great!
 |
 */
-Route::get('/image-proxy', function () {
-    $url = request('url');
-    if (!$url) {
-        abort(400, 'Missing url parameter');
-    }
-    $response = Http::withHeaders(['User-Agent' => 'Laravel-Image-Proxy'])->get($url);
-    return response($response->body(), $response->status())
-        ->header('Content-Type', $response->header('Content-Type'))
-        ->header('Access-Control-Allow-Origin', '*');
-});
-
 Route::get('/zulors-sw.js', function () {
     return response()->file(public_path('zulors-sw.js'), [
         'Content-Type' => 'application/javascript; charset=utf-8',

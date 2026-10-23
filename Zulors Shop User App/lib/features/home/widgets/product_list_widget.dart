@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:zulors_shop/common/basewidget/api_retry_widget.dart';
 import 'package:zulors_shop/common/basewidget/no_internet_screen_widget.dart';
 import 'package:zulors_shop/common/basewidget/product_shimmer_widget.dart';
 import 'package:zulors_shop/common/basewidget/product_widget.dart';
@@ -6,7 +7,8 @@ import 'package:zulors_shop/features/product/controllers/product_controller.dart
 import 'package:zulors_shop/helper/debounce_helper.dart';
 import 'package:zulors_shop/helper/responsive_helper.dart';
 import 'package:zulors_shop/utill/dimensions.dart';
-import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart' show SliverMasonryGrid;
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart'
+    show SliverMasonryGrid;
 import 'package:provider/provider.dart';
 
 class HomeProductListWidget extends StatelessWidget {
@@ -15,46 +17,65 @@ class HomeProductListWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Consumer<ProductController>(
+        builder: (context, productController, child) {
+      final products = productController.selectedProductModel?.products ?? [];
+      final totalSize = productController.selectedProductModel?.totalSize;
+      final offset = productController.selectedProductModel?.offset;
 
-    return  Consumer<ProductController>(
-      builder: (context, productController, child) {
-          final products = productController.selectedProductModel?.products ?? [];
-          final totalSize = productController.selectedProductModel?.totalSize;
-          final offset = productController.selectedProductModel?.offset;
-
-          if (products.isEmpty && (productController.selectedProductModel != null)) {
-            return const SliverToBoxAdapter(
-              child: NoInternetOrDataScreenWidget(isNoInternet: false),
-            );
-          }
-
-          if (products.isEmpty) {
-            return const SliverToBoxAdapter(
-              child: ProductShimmer(isHomePage: false, isEnabled: true),
-            );
-          }
-          return SliverPaginatedMasonryGrid(
-            scrollController: scrollController,
-            onPaginate: (offset) {
-              productController.getSelectedProductModel(offset ?? 1);
-            },
-            totalSize: totalSize,
-            offset: offset,
-            itemCount: products.length,
-            crossAxisCount: ResponsiveHelper.isTab(context) ? 3 : 2,
-            mainAxisSpacing: Dimensions.paddingSizeSmall,
-            crossAxisSpacing: Dimensions.paddingSizeSmall,
-            itemBuilder: (context, index) => ProductWidget(
-              margin: 0,
-              productModel: products[index],
+      if (products.isEmpty &&
+          (productController.selectedProductModel != null)) {
+        if (productController.selectedProductError != null) {
+          return SliverToBoxAdapter(
+            child: ApiRetryWidget(
+              message: productController.selectedProductError!,
+              onRetry: () => productController.getSelectedProductModel(1),
+              compact: true,
             ),
           );
+        }
+        return const SliverToBoxAdapter(
+          child: NoInternetOrDataScreenWidget(isNoInternet: false),
+        );
       }
-    );
+
+      if (products.isEmpty) {
+        if (productController.selectedProductError != null) {
+          return SliverToBoxAdapter(
+            child: ApiRetryWidget(
+              message: productController.selectedProductError!,
+              onRetry: () => productController.getSelectedProductModel(1),
+            ),
+          );
+        }
+        return const SliverToBoxAdapter(
+          child: ProductShimmer(isHomePage: false, isEnabled: true),
+        );
+      }
+      return SliverPaginatedMasonryGrid(
+        scrollController: scrollController,
+        onPaginate: (offset) {
+          productController.getSelectedProductModel(offset ?? 1);
+        },
+        totalSize: totalSize,
+        offset: offset,
+        itemCount: products.length,
+        crossAxisCount: ResponsiveHelper.isTab(context) ? 3 : 2,
+        mainAxisSpacing: Dimensions.paddingSizeSmall,
+        crossAxisSpacing: Dimensions.paddingSizeSmall,
+        errorMessage: productController.selectedProductError,
+        onRetry: productController.selectedProductError == null
+            ? null
+            : () =>
+                productController.getSelectedProductModel((offset ?? 1) + 1),
+        itemBuilder: (context, index) => ProductWidget(
+          margin: 0,
+          productModel: products[index],
+        ),
+      );
+    });
   }
 }
-
-
 
 class SliverPaginatedMasonryGrid extends StatefulWidget {
   final Function(int? offset) onPaginate;
@@ -68,7 +89,8 @@ class SliverPaginatedMasonryGrid extends StatefulWidget {
   final double crossAxisSpacing;
   final bool enabledPagination;
   final ScrollController? scrollController;
-
+  final String? errorMessage;
+  final VoidCallback? onRetry;
 
   const SliverPaginatedMasonryGrid({
     super.key,
@@ -83,13 +105,17 @@ class SliverPaginatedMasonryGrid extends StatefulWidget {
     this.crossAxisSpacing = 4.0,
     this.enabledPagination = true,
     this.scrollController,
+    this.errorMessage,
+    this.onRetry,
   });
 
   @override
-  State<SliverPaginatedMasonryGrid> createState() => _SliverPaginatedMasonryGridState();
+  State<SliverPaginatedMasonryGrid> createState() =>
+      _SliverPaginatedMasonryGridState();
 }
 
-class _SliverPaginatedMasonryGridState extends State<SliverPaginatedMasonryGrid> {
+class _SliverPaginatedMasonryGridState
+    extends State<SliverPaginatedMasonryGrid> {
   int? _offset;
   late List<int?> _offsetList;
   bool _isLoading = false;
@@ -103,15 +129,32 @@ class _SliverPaginatedMasonryGridState extends State<SliverPaginatedMasonryGrid>
     widget.scrollController?.addListener(_scrollListener);
   }
 
-
+  @override
+  void didUpdateWidget(covariant SliverPaginatedMasonryGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController?.removeListener(_scrollListener);
+      widget.scrollController?.addListener(_scrollListener);
+    }
+  }
 
   void _scrollListener() {
-    if (widget.scrollController?.position.pixels == widget.scrollController?.position.maxScrollExtent &&
+    final controller = widget.scrollController;
+    if (controller == null || !controller.hasClients) return;
+    if (controller.position.pixels >=
+            controller.position.maxScrollExtent - 300 &&
         widget.totalSize != null &&
         !_isLoading &&
         widget.enabledPagination) {
       _debounce.run(_paginate);
     }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController?.removeListener(_scrollListener);
+    _debounce.dispose();
+    super.dispose();
   }
 
   Future<void> _paginate() async {
@@ -156,6 +199,14 @@ class _SliverPaginatedMasonryGridState extends State<SliverPaginatedMasonryGrid>
             childCount: widget.itemCount,
             itemBuilder: widget.itemBuilder,
           ),
+          if (widget.errorMessage != null && widget.onRetry != null)
+            SliverToBoxAdapter(
+              child: ApiRetryWidget(
+                message: widget.errorMessage!,
+                onRetry: widget.onRetry!,
+                compact: true,
+              ),
+            ),
           if (_isLoading ||
               (widget.totalSize != null &&
                   _offset! < (widget.totalSize! / widget.limit!).ceil() &&

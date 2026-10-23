@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:zulors_shop/utill/app_constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,15 +25,10 @@ class ThemeController with ChangeNotifier {
   Color? selectedPrimaryColor;
   Color? selectedSecondaryColor;
 
-
-
   void setThemeColor({Color? primaryColor, Color? secondaryColor}) {
-    selectedPrimaryColor = primaryColor;
-    selectedPrimaryColor = secondaryColor;
+    selectedPrimaryColor = primaryColor ?? selectedPrimaryColor;
+    selectedSecondaryColor = secondaryColor ?? selectedSecondaryColor;
 
     notifyListeners();
   }
-
-
-
 }

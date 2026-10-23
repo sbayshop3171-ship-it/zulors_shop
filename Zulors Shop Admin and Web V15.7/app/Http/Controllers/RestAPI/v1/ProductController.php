@@ -325,8 +325,16 @@ class ProductController extends Controller
             }])
             ->where(['slug' => $slug])->first();
 
-        if (isset($product)) {
-            $restockRequestedIds = $this->restockProductRepo->getListWhere(filters: ['product_id' => $product['id']], dataLimit: 'all')?->pluck('id')->toArray() ?? [];
+        if (!isset($product)) {
+            return response()->json([
+                'errors' => [
+                    'code' => 'product-001',
+                    'message' => translate('product_not_found'),
+                ],
+            ], 404);
+        }
+
+        $restockRequestedIds = $this->restockProductRepo->getListWhere(filters: ['product_id' => $product['id']], dataLimit: 'all')?->pluck('id')->toArray() ?? [];
 
             $product = Helpers::product_data_formatting($product, false);
             if (isset($product->reviews) && !empty($product->reviews)) {
@@ -352,7 +360,6 @@ class ProductController extends Controller
                 $product['restock_requested_list'] = [];
                 $product['is_restock_requested'] = 0;
             }
-        }
         return response()->json($product, 200);
     }
 

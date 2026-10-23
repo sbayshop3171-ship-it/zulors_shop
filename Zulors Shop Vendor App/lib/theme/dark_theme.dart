@@ -1,31 +1,30 @@
 import 'package:flutter/material.dart';
 
+ThemeData darkTheme({Color? primaryColor, Color? secondaryColor}) {
+  final resolvedPrimaryColor = primaryColor ?? const Color(0xFF1455AC);
+  final resolvedSecondaryColor = secondaryColor ?? const Color(0xFFF58300);
+  return ThemeData(
+    fontFamily: 'TitilliumWeb',
+    primaryColor: resolvedPrimaryColor,
+    brightness: Brightness.dark,
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: Colors.transparent,
+    ),
+    highlightColor: const Color(0xFF252525),
+    hintColor: const Color(0xFFc7c7c7),
+    cardColor: const Color(0xFF333333),
 
-Color _primaryColor = const Color(0xFF1455AC);
-Color _secondaryColor = const Color(0xFFF58300);
+    textTheme: const TextTheme(
+      bodyLarge: TextStyle(color: Color(0xFFE9EEF4)), // Text color primary
+      bodyMedium: TextStyle(color: Color(0xFFE9EEF4)), // Text color Secondary
+      bodySmall: TextStyle(color: Color(0xFFE9EEF4)), // Text color Light grey
+      headlineMedium: TextStyle(color: Color(0xFFA0A0A0)),
+      headlineLarge: TextStyle(color: Color(0xFF656566)),
+    ),
 
-ThemeData dark = ThemeData(
-  fontFamily: 'TitilliumWeb',
-  primaryColor: _primaryColor,
-  brightness: Brightness.dark,
-  bottomSheetTheme: const BottomSheetThemeData(backgroundColor: Colors.transparent),
-  highlightColor: const Color(0xFF252525),
-  hintColor: const Color(0xFFc7c7c7),
-  cardColor: const Color(0xFF333333),
-
-
-  textTheme: const TextTheme(
-    bodyLarge: TextStyle(color: Color(0xFFE9EEF4)),  // Text color primary
-    bodyMedium: TextStyle(color: Color(0xFFE9EEF4)), // Text color Secondary
-    bodySmall: TextStyle(color: Color(0xFFE9EEF4)),  // Text color Light grey
-    headlineMedium: TextStyle(color: Color(0xFFA0A0A0)),
-    headlineLarge : TextStyle(color: Color(0xFF656566)),
-  ),
-
-
-  colorScheme : ColorScheme.dark(
-      primary: _primaryColor,  // Primary Color
-      secondary: _secondaryColor,  // Secondary Color
+    colorScheme: ColorScheme.dark(
+      primary: resolvedPrimaryColor, // Primary Color
+      secondary: resolvedSecondaryColor, // Secondary Color
       tertiary: const Color(0xFFFFBB38), // Warning Color
       tertiaryContainer: const Color(0xFF6C7A8E),
       onTertiaryContainer: const Color(0xFF04BB7B), // Success Color
@@ -37,11 +36,14 @@ ThemeData dark = ThemeData(
       onPrimary: const Color(0xFFF2F2F2),
       onSecondary: const Color(0xFFFC9926),
       error: const Color(0xFFFF4040), // Danger Color
-  ),
+    ),
 
-  pageTransitionsTheme: const PageTransitionsTheme(builders: {
-    TargetPlatform.android: ZoomPageTransitionsBuilder(),
-    TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
-    TargetPlatform.fuchsia: ZoomPageTransitionsBuilder(),
-  }),
-);
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: ZoomPageTransitionsBuilder(),
+        TargetPlatform.iOS: ZoomPageTransitionsBuilder(),
+        TargetPlatform.fuchsia: ZoomPageTransitionsBuilder(),
+      },
+    ),
+  );
+}

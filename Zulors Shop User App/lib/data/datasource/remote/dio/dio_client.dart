@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
+import 'package:zulors_shop/data/datasource/remote/dio/api_diagnostics_interceptor.dart';
 import 'package:zulors_shop/data/datasource/remote/dio/logging_interceptor.dart';
 import 'package:zulors_shop/utill/app_constants.dart';
 import 'package:path_provider/path_provider.dart';
@@ -16,45 +16,54 @@ class DioClient {
   String? token;
   String? countryCode;
 
-  DioClient(this.baseUrl,
-      Dio? dioC, {
-        required this.loggingInterceptor,
-        required this.sharedPreferences,
-      }) {
+  DioClient(
+    this.baseUrl,
+    Dio? dioC, {
+    required this.loggingInterceptor,
+    required this.sharedPreferences,
+  }) {
     token = sharedPreferences.getString(AppConstants.userLoginToken);
-    countryCode = sharedPreferences.getString(AppConstants.countryCode) ?? AppConstants.languages[0].countryCode;
-    if (kDebugMode) {
-      print("NNNN $token");
-    }
+    countryCode = sharedPreferences.getString(AppConstants.countryCode) ??
+        AppConstants.languages[0].countryCode;
     dio = dioC ?? Dio();
     dio
       ?..options.baseUrl = baseUrl
-      ..options.connectTimeout = const Duration(seconds: 60)
-      ..options.receiveTimeout = const Duration(seconds: 60)
+      ..options.connectTimeout = const Duration(seconds: 10)
+      ..options.sendTimeout = const Duration(seconds: 15)
+      ..options.receiveTimeout = const Duration(seconds: 20)
       ..httpClientAdapter
       ..options.headers = {
         'Content-Type': 'application/json; charset=UTF-8',
         'Authorization': 'Bearer $token',
         'Accept': 'application/json',
-        AppConstants.langKey : countryCode == 'US'? 'en':countryCode!.toLowerCase(),
-
+        AppConstants.langKey:
+            countryCode == 'US' ? 'en' : countryCode!.toLowerCase(),
       };
+    dio!.interceptors.add(ApiDiagnosticsInterceptor(dio!));
     dio!.interceptors.add(loggingInterceptor);
   }
 
   void updateHeader(String? token, String? countryCode) {
     token = token ?? this.token;
-    countryCode = countryCode == null ? this.countryCode == 'US' ? 'en': this.countryCode!.toLowerCase(): countryCode == 'US' ? 'en' : countryCode.toLowerCase();
+    countryCode = countryCode == null
+        ? this.countryCode == 'US'
+            ? 'en'
+            : this.countryCode!.toLowerCase()
+        : countryCode == 'US'
+            ? 'en'
+            : countryCode.toLowerCase();
     this.token = token;
     this.countryCode = countryCode;
     dio!.options.headers = {
       'Content-Type': 'application/json; charset=UTF-8',
       'Authorization': 'Bearer $token',
-      AppConstants.langKey: countryCode == 'US'? 'en':countryCode.toLowerCase(),
+      AppConstants.langKey:
+          countryCode == 'US' ? 'en' : countryCode.toLowerCase(),
     };
   }
 
-  Future<Response> get(String uri, {
+  Future<Response> get(
+    String uri, {
     Map<String, dynamic>? queryParameters,
     Options? options,
     CancelToken? cancelToken,
@@ -78,9 +87,8 @@ class DioClient {
     }
   }
 
-
-
-  Future<Response> getDownload(String uri, {
+  Future<Response> getDownload(
+    String uri, {
     Map<String, dynamic>? queryParameters,
     Options? options,
     CancelToken? cancelToken,
@@ -101,9 +109,8 @@ class DioClient {
     }
   }
 
-
-
-  Future<Response> post(String uri, {
+  Future<Response> post(
+    String uri, {
     data,
     Map<String, dynamic>? queryParameters,
     Options? options,
@@ -129,7 +136,8 @@ class DioClient {
     }
   }
 
-  Future<Response> put(String uri, {
+  Future<Response> put(
+    String uri, {
     data,
     Map<String, dynamic>? queryParameters,
     Options? options,
@@ -155,7 +163,8 @@ class DioClient {
     }
   }
 
-  Future<Response> delete(String uri, {
+  Future<Response> delete(
+    String uri, {
     data,
     Map<String, dynamic>? queryParameters,
     Options? options,
@@ -176,8 +185,4 @@ class DioClient {
       rethrow;
     }
   }
-
-
 }
-
-

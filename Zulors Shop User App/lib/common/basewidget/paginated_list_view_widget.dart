@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:zulors_shop/helper/debounce_helper.dart';
 import 'package:zulors_shop/utill/dimensions.dart';
 
-
 class PaginatedListView extends StatefulWidget {
   final ScrollController? scrollController;
   final Function(int? offset) onPaginate;
@@ -13,8 +12,15 @@ class PaginatedListView extends StatefulWidget {
   final bool enabledPagination;
   final bool reverse;
   const PaginatedListView({
-    super.key, this.scrollController, required this.onPaginate, required this.totalSize,
-    required this.offset, required this.itemView, this.enabledPagination = true, this.reverse = false, this.limit = 10,
+    super.key,
+    this.scrollController,
+    required this.onPaginate,
+    required this.totalSize,
+    required this.offset,
+    required this.itemView,
+    this.enabledPagination = true,
+    this.reverse = false,
+    this.limit = 10,
   });
 
   @override
@@ -28,7 +34,6 @@ class _PaginatedListViewState extends State<PaginatedListView> {
 
   final DebounceHelper debounce = DebounceHelper(milliseconds: 500);
 
-
   @override
   void initState() {
     super.initState();
@@ -36,35 +41,52 @@ class _PaginatedListViewState extends State<PaginatedListView> {
     _offset = 1;
     _offsetList = [1];
 
-    if(widget.scrollController != null){
-      widget.scrollController?.addListener(() {
-        if (widget.scrollController?.position.pixels == widget.scrollController?.position.maxScrollExtent
-            && widget.totalSize != null && !_isLoading && widget.enabledPagination) {
-          if(mounted) {
-            _paginate();
-          }
-        }
-      });
-    }
+    widget.scrollController?.addListener(_scrollListener);
+  }
 
+  @override
+  void didUpdateWidget(covariant PaginatedListView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController?.removeListener(_scrollListener);
+      widget.scrollController?.addListener(_scrollListener);
+    }
+  }
+
+  void _scrollListener() {
+    final controller = widget.scrollController;
+    if (controller == null || !controller.hasClients) return;
+    if (controller.position.pixels >=
+            controller.position.maxScrollExtent - 300 &&
+        widget.totalSize != null &&
+        !_isLoading &&
+        widget.enabledPagination) {
+      _paginate();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController?.removeListener(_scrollListener);
+    debounce.dispose();
+    super.dispose();
   }
 
   void _paginate() async {
     int pageSize = (widget.totalSize! / widget.limit!).ceil();
-    if (_offset! < pageSize && !_offsetList.contains(_offset!+1)) {
-
+    if (_offset! < pageSize && !_offsetList.contains(_offset! + 1)) {
       setState(() {
         _offset = _offset! + 1;
         _offsetList.add(_offset);
         _isLoading = true;
       });
       await widget.onPaginate(_offset);
+      if (!mounted) return;
       setState(() {
         _isLoading = false;
       });
-
-    }else {
-      if(_isLoading) {
+    } else {
+      if (_isLoading) {
         setState(() {
           _isLoading = false;
         });
@@ -74,39 +96,44 @@ class _PaginatedListViewState extends State<PaginatedListView> {
 
   @override
   Widget build(BuildContext context) {
-    if(widget.offset != null) {
+    if (widget.offset != null) {
       _offset = widget.offset;
       _offsetList = [];
-      for(int index=1; index<=widget.offset!; index++) {
+      for (int index = 1; index <= widget.offset!; index++) {
         _offsetList.add(index);
       }
     }
 
-
     return _OnNotificationListenerWidget(
       isEnabled: widget.scrollController == null,
-      onNotification: (scrollNotification){
-        if (scrollNotification!.metrics.pixels >= scrollNotification.metrics.maxScrollExtent
-            && widget.totalSize != null && !_isLoading && widget.enabledPagination) {
-
-          if(mounted) {
-            debounce.run((){
+      onNotification: (scrollNotification) {
+        if (scrollNotification!.metrics.pixels >=
+                scrollNotification.metrics.maxScrollExtent - 300 &&
+            widget.totalSize != null &&
+            !_isLoading &&
+            widget.enabledPagination) {
+          if (mounted) {
+            debounce.run(() {
               _paginate();
             });
           }
         }
       },
-
       child: Column(children: [
-
         widget.reverse ? const SizedBox() : widget.itemView,
-
-        ((widget.totalSize == null || _offset! >= (widget.totalSize! / (widget.limit ?? 10)).ceil() || _offsetList.contains(_offset!+1))) ? const SizedBox() : Center(child: Padding(
-            padding: (_isLoading) ?  const EdgeInsets.all(Dimensions.paddingSizeSmall) : EdgeInsets.zero,
-            child: _isLoading ? const CircularProgressIndicator() :  const SizedBox())),
-
+        ((widget.totalSize == null ||
+                _offset! >= (widget.totalSize! / (widget.limit ?? 10)).ceil() ||
+                _offsetList.contains(_offset! + 1)))
+            ? const SizedBox()
+            : Center(
+                child: Padding(
+                    padding: (_isLoading)
+                        ? const EdgeInsets.all(Dimensions.paddingSizeSmall)
+                        : EdgeInsets.zero,
+                    child: _isLoading
+                        ? const CircularProgressIndicator()
+                        : const SizedBox())),
         widget.reverse ? widget.itemView : const SizedBox(),
-
       ]),
     );
   }
@@ -116,17 +143,22 @@ class _OnNotificationListenerWidget extends StatelessWidget {
   final bool isEnabled;
   final Widget child;
   final Function(ScrollNotification? scrollNotification) onNotification;
-  const _OnNotificationListenerWidget({required this.isEnabled, required this.child, required this.onNotification});
+  const _OnNotificationListenerWidget(
+      {required this.isEnabled,
+      required this.child,
+      required this.onNotification});
 
   @override
   Widget build(BuildContext context) {
-    return isEnabled ? NotificationListener<ScrollNotification>(
-      onNotification: (scrollNotification) {
-        onNotification(scrollNotification);
+    return isEnabled
+        ? NotificationListener<ScrollNotification>(
+            onNotification: (scrollNotification) {
+              onNotification(scrollNotification);
 
-        return false;
-      },
-      child: child,
-    ) : child;
+              return false;
+            },
+            child: child,
+          )
+        : child;
   }
 }

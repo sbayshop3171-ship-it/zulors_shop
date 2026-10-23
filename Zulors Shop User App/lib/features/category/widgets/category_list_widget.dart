@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:zulors_shop/common/basewidget/api_retry_widget.dart';
 import 'package:zulors_shop/common/basewidget/title_row_widget.dart';
 import 'package:zulors_shop/features/category/controllers/category_controller.dart';
 import 'package:zulors_shop/features/category/widgets/category_widget.dart';
@@ -19,47 +20,63 @@ class CategoryListWidget extends StatelessWidget {
     return Consumer<CategoryController>(
       builder: (context, categoryProvider, child) {
         return Column(children: [
-
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Dimensions.paddingSizeExtraExtraSmall),
+            padding: const EdgeInsets.symmetric(
+                horizontal: Dimensions.paddingSizeExtraExtraSmall),
             child: TitleRowWidget(
               title: getTranslated('CATEGORY', context),
               onTap: () {
-                if(categoryProvider.categoryList.isNotEmpty) {
+                if (categoryProvider.categoryList.isNotEmpty) {
                   RouterHelper.getCategoryScreenRoute(action: RouteAction.push);
                 }
               },
             ),
           ),
           const SizedBox(height: Dimensions.paddingSizeSmall),
+          categoryProvider.categoryList.isNotEmpty
+              ? SizedBox(
+                  height: Provider.of<LocalizationController>(context,
+                              listen: false)
+                          .isLtr
+                      ? MediaQuery.of(context).size.width / 3.7
+                      : MediaQuery.of(context).size.width / 3,
+                  child: ListView.builder(
+                    padding: EdgeInsets.zero,
+                    scrollDirection: Axis.horizontal,
+                    itemCount: categoryProvider.categoryList.length > 10
+                        ? 10
+                        : categoryProvider.categoryList.length,
 
-          categoryProvider.categoryList.isNotEmpty ?
-          SizedBox( height: Provider.of<LocalizationController>(context, listen: false).isLtr ? MediaQuery.of(context).size.width/3.7 : MediaQuery.of(context).size.width/3,
-            child: ListView.builder(
-              padding: EdgeInsets.zero,
-              scrollDirection: Axis.horizontal,
-              itemCount: categoryProvider.categoryList.length > 10 ? 10 : categoryProvider.categoryList.length,
+                    // shrinkWrap: true,
 
-              // shrinkWrap: true,
-
-              itemBuilder: (BuildContext context, int index) {
-                return InkWell( splashColor: Colors.transparent, highlightColor: Colors.transparent,
-                    onTap: () {
-                      RouterHelper.getBrandCategoryRoute(
-                        action: RouteAction.push,
-                        isBrand: false,
-                        id: categoryProvider.categoryList[index].id,
-                        name: categoryProvider.categoryList[index].name,
+                    itemBuilder: (BuildContext context, int index) {
+                      return InkWell(
+                        splashColor: Colors.transparent,
+                        highlightColor: Colors.transparent,
+                        onTap: () {
+                          RouterHelper.getBrandCategoryRoute(
+                            action: RouteAction.push,
+                            isBrand: false,
+                            id: categoryProvider.categoryList[index].id,
+                            name: categoryProvider.categoryList[index].name,
+                          );
+                        },
+                        child: CategoryWidget(
+                            category: categoryProvider.categoryList[index],
+                            index: index,
+                            length: categoryProvider.categoryList.length),
                       );
                     },
-                    child: CategoryWidget(category: categoryProvider.categoryList[index],
-                        index: index,length:  categoryProvider.categoryList.length),
-                );
-              },
-            ),
-          ) : const CategoryShimmerWidget(),
+                  ),
+                )
+              : categoryProvider.categoryError != null
+                  ? ApiRetryWidget(
+                      message: categoryProvider.categoryError!,
+                      onRetry: () => categoryProvider.getCategoryList(true),
+                      compact: true,
+                    )
+                  : const CategoryShimmerWidget(),
         ]);
-
       },
     );
   }

@@ -1,104 +1,91 @@
-
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart';
-import 'package:zulors_shop/data/model/error_response.dart';
 import 'package:zulors_shop/features/auth/controllers/auth_controller.dart';
 import 'package:zulors_shop/main.dart';
 import 'package:provider/provider.dart';
 
 class ApiErrorHandler {
   static dynamic getMessage(dynamic error) {
-    dynamic errorDescription = "";
-    if (error is Exception) {
-      try {
-        if (error is DioException) {
-          switch (error.type) {
-            case DioExceptionType.cancel:
-              errorDescription = "Request to API server was cancelled";
-              break;
-            case DioExceptionType.connectionTimeout:
-              errorDescription = "Connection timeout with API server";
-              break;
-            case DioExceptionType.sendTimeout:
-              errorDescription = "Send timeout";
-              break;
-            case DioExceptionType.receiveTimeout:
-              errorDescription = "Receive timeout in connection with API server";
-              break;
-            case DioExceptionType.badResponse:
-              switch (error.response!.statusCode) {
+    if (error is DioException) {
+      final statusCode = error.response?.statusCode;
+      final requestId =
+          error.requestOptions.headers['X-Request-Id']?.toString();
+      final body = error.response?.data;
+      final serverMessage = _messageFromBody(body);
 
-                case 403:
-                  if(error.response!.data['errors'] != null){
-                    ErrorResponse errorResponse = ErrorResponse.fromJson(error.response?.data);
-                    errorDescription = errorResponse.errors?[0].message;
-                  }else{
-                    errorDescription = error.response!.data['message'];
-                  }
-
-                  if (kDebugMode) {
-                    print("=================403=============>>$errorDescription");
-                  }
-
-                  break;
-                case 401:
-                  if(error.response!.data['errors'] != null){
-                    ErrorResponse errorResponse = ErrorResponse.fromJson(error.response?.data);
-                    errorDescription = errorResponse.errors?[0].message;
-                  } else{
-                    errorDescription = error.response!.data['message'];
-                  }
-                  Provider.of<AuthController>(Get.context!,listen: false).clearSharedData();
-                  break;
-                case 404:
-                  break;
-                case 400:
-                  if(error.response!.data['errors'] != null){
-                    ErrorResponse errorResponse = ErrorResponse.fromJson(error.response?.data);
-                    errorDescription = errorResponse.errors?[0].message;
-                  } else{
-                    errorDescription = error.response?.data['message'] ?? '';
-                  }
-                  break;
-                case 500:
-                  if (kDebugMode) {
-                    print("-----------500------------->>${error.response!.data}");
-                  }
-                  errorDescription = 'Internal server error';
-                case 503:
-                  if(error.response!.data['message'] != null){
-                    errorDescription = error.response!.data['message'];
-                  }
-                case 429:
-                  errorDescription = error.response!.statusMessage;
-                  break;
-                default:
-                  ErrorResponse errorResponse = ErrorResponse.fromJson(error.response!.data);
-                  if (errorResponse.errors != null && errorResponse.errors!.isNotEmpty) {
-                    errorDescription = errorResponse;
-                  } else {errorDescription = "Failed to load data - status code: ${error.response!.statusCode}";
-                  }
-              }
-              break;
-            case DioExceptionType.badCertificate:
-              // TODO: Handle this case.
-              break;
-            case DioExceptionType.connectionError:
-              // TODO: Handle this case.
-              break;
-            case DioExceptionType.unknown:
-              errorDescription = "Request to API call limit excited ";
-              break;
+      switch (error.type) {
+        case DioExceptionType.cancel:
+          return 'Request was cancelled';
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.transformTimeout:
+          return 'The server took too long to respond. Please retry.';
+        case DioExceptionType.connectionError:
+          return 'Unable to connect. Check your internet connection and retry.';
+        case DioExceptionType.badCertificate:
+          return 'Secure connection to the server failed.';
+        case DioExceptionType.unknown:
+          return error.message ?? 'Unexpected network error';
+        case DioExceptionType.badResponse:
+          if (statusCode == 401) {
+            final context = Get.context;
+            if (context != null &&
+                Provider.of<AuthController>(context, listen: false)
+                    .isLoggedIn()) {
+              Provider.of<AuthController>(context, listen: false)
+                  .clearSharedData();
+            }
+            return serverMessage.isNotEmpty
+                ? serverMessage
+                : 'Your session has expired. Please sign in again.';
           }
-        } else {
-          errorDescription = "Unexpected error occured";
-        }
-      } on FormatException catch (e) {
-        errorDescription = e.toString();
+          if (statusCode == 404) {
+            return serverMessage.isNotEmpty
+                ? serverMessage
+                : 'The requested item was not found.';
+          }
+          if (statusCode == 429) {
+            return 'Too many requests. Please wait a moment and retry.';
+          }
+          if (statusCode == 500 ||
+              statusCode == 502 ||
+              statusCode == 503 ||
+              statusCode == 504) {
+            final reference = requestId == null ? '' : ' (Request: $requestId)';
+            return 'The server is temporarily unavailable.$reference';
+          }
+          return serverMessage.isNotEmpty
+              ? serverMessage
+              : 'Request failed${statusCode == null ? '' : ' (HTTP $statusCode)'}';
       }
-    } else {
-      errorDescription = "is not a subtype of exception";
     }
-    return errorDescription;
+
+    if (error is FormatException) {
+      return 'The server returned data the app could not read.';
+    }
+    return error?.toString() ?? 'Unexpected error';
+  }
+
+  static String _messageFromBody(dynamic body) {
+    if (body is Map) {
+      final message = body['message'];
+      if (message is String && message.isNotEmpty) return message;
+      final errors = body['errors'];
+      if (errors is List && errors.isNotEmpty) {
+        final first = errors.first;
+        if (first is Map && first['message'] != null) {
+          return first['message'].toString();
+        }
+        if (first is String) return first;
+      }
+      if (errors is Map && errors.isNotEmpty) {
+        final firstValue = errors.values.first;
+        if (firstValue is List && firstValue.isNotEmpty) {
+          return firstValue.first.toString();
+        }
+        if (firstValue != null) return firstValue.toString();
+      }
+    }
+    return '';
   }
 }

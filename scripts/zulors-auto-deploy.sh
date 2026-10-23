@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+# The cron job runs every minute; hold one lock to prevent overlapping deploys.
+exec 9>/run/lock/zulors-auto-deploy.lock
+flock -n 9 || exit 0
+
 REPO_URL="https://github.com/sbayshop3171-ship-it/zulors_shop.git"
 BRANCH="main"
 REPO_CACHE_DIR="/root/zulors-deploy-cache/zulors_shop"

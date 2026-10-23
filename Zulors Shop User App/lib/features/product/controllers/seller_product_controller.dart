@@ -15,9 +15,12 @@ class SellerProductController extends ChangeNotifier {
   ProductModel? sellerMoreProduct;
 
   bool _isFilterApply = false;
-  bool  get isFilterApply => _isFilterApply;
+  bool get isFilterApply => _isFilterApply;
 
-  Future <ApiResponseModel> getSellerProductList(String sellerId, int offset, String productId, {
+  Future<ApiResponseModel> getSellerProductList(
+    String sellerId,
+    int offset,
+    String productId, {
     bool reload = true,
     String search = '',
     String? categoryIds = '[]',
@@ -26,22 +29,26 @@ class SellerProductController extends ChangeNotifier {
     String? publishingIds = '[]',
     String? productType = 'all',
   }) async {
+    ApiResponseModel apiResponse = await sellerProductServiceInterface!
+        .getSellerProductList(sellerId, offset.toString(), productId,
+            categoryIds: categoryIds,
+            brandIds: brandIds,
+            search: search,
+            authorIds: authorIds,
+            publishingIds: publishingIds,
+            productType: productType);
 
-    ApiResponseModel apiResponse = await sellerProductServiceInterface!.getSellerProductList(
-      sellerId, offset.toString(),
-      productId, categoryIds : categoryIds,
-      brandIds: brandIds, search: search,
-      authorIds: authorIds, publishingIds: publishingIds,
-      productType: productType
-    );
-
-    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
-      if(offset == 1){
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      if (offset == 1) {
         sellerProduct = ProductModel.fromJson(apiResponse.response!.data);
-      }else{
-        sellerProduct?.products?.addAll(ProductModel.fromJson(apiResponse.response!.data).products!);
-        sellerProduct?.offset = (ProductModel.fromJson(apiResponse.response!.data).offset!);
-        sellerProduct?.totalSize = ProductModel.fromJson(apiResponse.response!.data).totalSize;
+      } else {
+        sellerProduct?.products?.addAll(
+            ProductModel.fromJson(apiResponse.response!.data).products!);
+        sellerProduct?.offset =
+            (ProductModel.fromJson(apiResponse.response!.data).offset!);
+        sellerProduct?.totalSize =
+            ProductModel.fromJson(apiResponse.response!.data).totalSize;
       }
     } else {
       ApiChecker.checkApi(apiResponse);
@@ -50,17 +57,22 @@ class SellerProductController extends ChangeNotifier {
     return apiResponse;
   }
 
-
-
-  Future <ApiResponseModel> getSellerMoreProductList(String sellerId, int offset, String productId) async {
+  Future<ApiResponseModel> getSellerMoreProductList(
+    String sellerId,
+    int offset,
+    String productId, {
+    bool showErrors = true,
+  }) async {
     sellerMoreProduct = null;
 
-    ApiResponseModel apiResponse = await sellerProductServiceInterface!.getSellerProductList( sellerId, offset.toString(), productId );
-    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
-      if(offset == 1){
+    ApiResponseModel apiResponse = await sellerProductServiceInterface!
+        .getSellerProductList(sellerId, offset.toString(), productId);
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      if (offset == 1) {
         sellerMoreProduct = ProductModel.fromJson(apiResponse.response!.data);
       }
-    } else {
+    } else if (showErrors) {
       ApiChecker.checkApi(apiResponse);
     }
     notifyListeners();
@@ -69,19 +81,25 @@ class SellerProductController extends ChangeNotifier {
 
   ProductModel? productModel;
 
-  Future<void> getSellerWiseBestSellingProductList(String sellerId, int offset) async {
-    ApiResponseModel apiResponse = await sellerProductServiceInterface!.getSellerWiseBestSellingProductList(sellerId, offset.toString());
-    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
-      if(offset == 1){
+  Future<void> getSellerWiseBestSellingProductList(
+      String sellerId, int offset) async {
+    ApiResponseModel apiResponse = await sellerProductServiceInterface!
+        .getSellerWiseBestSellingProductList(sellerId, offset.toString());
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      if (offset == 1) {
         productModel = null;
         productModel = ProductModel.fromJson(apiResponse.response!.data);
-      }else {
-        productModel!.products!.addAll(ProductModel.fromJson(apiResponse.response!.data).products!);
-        productModel!.offset = ProductModel.fromJson(apiResponse.response!.data).offset;
-        productModel!.totalSize = ProductModel.fromJson(apiResponse.response!.data).totalSize;
+      } else {
+        productModel!.products!.addAll(
+            ProductModel.fromJson(apiResponse.response!.data).products!);
+        productModel!.offset =
+            ProductModel.fromJson(apiResponse.response!.data).offset;
+        productModel!.totalSize =
+            ProductModel.fromJson(apiResponse.response!.data).totalSize;
       }
     } else {
-      ApiChecker.checkApi( apiResponse);
+      ApiChecker.checkApi(apiResponse);
     }
 
     notifyListeners();
@@ -89,17 +107,23 @@ class SellerProductController extends ChangeNotifier {
 
   ProductModel? sellerWiseFeaturedProduct;
 
-  Future<void> getSellerWiseFeaturedProductList(String sellerId, int offset) async {
-    ApiResponseModel apiResponse = await sellerProductServiceInterface!.getSellerWiseFeaturedProductList(sellerId, offset.toString());
-    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
-      if(offset == 1){
+  Future<void> getSellerWiseFeaturedProductList(
+      String sellerId, int offset) async {
+    ApiResponseModel apiResponse = await sellerProductServiceInterface!
+        .getSellerWiseFeaturedProductList(sellerId, offset.toString());
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      if (offset == 1) {
         sellerWiseFeaturedProduct = null;
-        sellerWiseFeaturedProduct = ProductModel.fromJson(apiResponse.response!.data);
-
-      }else {
-        sellerWiseFeaturedProduct!.products!.addAll(ProductModel.fromJson(apiResponse.response!.data).products!);
-        sellerWiseFeaturedProduct!.offset = ProductModel.fromJson(apiResponse.response!.data).offset;
-        sellerWiseFeaturedProduct!.totalSize = ProductModel.fromJson(apiResponse.response!.data).totalSize;
+        sellerWiseFeaturedProduct =
+            ProductModel.fromJson(apiResponse.response!.data);
+      } else {
+        sellerWiseFeaturedProduct!.products!.addAll(
+            ProductModel.fromJson(apiResponse.response!.data).products!);
+        sellerWiseFeaturedProduct!.offset =
+            ProductModel.fromJson(apiResponse.response!.data).offset;
+        sellerWiseFeaturedProduct!.totalSize =
+            ProductModel.fromJson(apiResponse.response!.data).totalSize;
       }
     } else {
       ApiChecker.checkApi(apiResponse);
@@ -107,21 +131,27 @@ class SellerProductController extends ChangeNotifier {
     notifyListeners();
   }
 
-
   ProductModel? sellerWiseRecommendedProduct;
-  Future<void> getSellerWiseRecommendedProductList(String sellerId, int offset) async {
-    ApiResponseModel apiResponse = await sellerProductServiceInterface!.getSellerWiseRecomendedProductList(sellerId, offset.toString());
-    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
-      if(offset == 1){
+  Future<void> getSellerWiseRecommendedProductList(
+      String sellerId, int offset) async {
+    ApiResponseModel apiResponse = await sellerProductServiceInterface!
+        .getSellerWiseRecomendedProductList(sellerId, offset.toString());
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      if (offset == 1) {
         sellerWiseRecommendedProduct = null;
-        sellerWiseRecommendedProduct = ProductModel.fromJson(apiResponse.response!.data);
-      }else {
-        sellerWiseRecommendedProduct!.products!.addAll(ProductModel.fromJson(apiResponse.response!.data).products!);
-        sellerWiseRecommendedProduct!.offset = ProductModel.fromJson(apiResponse.response!.data).offset;
-        sellerWiseRecommendedProduct!.totalSize = ProductModel.fromJson(apiResponse.response!.data).totalSize;
+        sellerWiseRecommendedProduct =
+            ProductModel.fromJson(apiResponse.response!.data);
+      } else {
+        sellerWiseRecommendedProduct!.products!.addAll(
+            ProductModel.fromJson(apiResponse.response!.data).products!);
+        sellerWiseRecommendedProduct!.offset =
+            ProductModel.fromJson(apiResponse.response!.data).offset;
+        sellerWiseRecommendedProduct!.totalSize =
+            ProductModel.fromJson(apiResponse.response!.data).totalSize;
       }
     } else {
-      ApiChecker.checkApi( apiResponse);
+      ApiChecker.checkApi(apiResponse);
     }
     notifyListeners();
   }
@@ -130,11 +160,14 @@ class SellerProductController extends ChangeNotifier {
 
   Future<void> getShopAgainFromRecentStore() async {
     DataSyncHelper.fetchAndSyncData(
-      fetchFromLocal: () => sellerProductServiceInterface!.getShopAgainFromRecentStore(source: DataSourceEnum.local),
-      fetchFromClient: () => sellerProductServiceInterface!.getShopAgainFromRecentStore(source: DataSourceEnum.client),
+      fetchFromLocal: () => sellerProductServiceInterface!
+          .getShopAgainFromRecentStore(source: DataSourceEnum.local),
+      fetchFromClient: () => sellerProductServiceInterface!
+          .getShopAgainFromRecentStore(source: DataSourceEnum.client),
       onResponse: (data, source) {
         shopAgainFromRecentStoreList = [];
-        data.forEach((store) => shopAgainFromRecentStoreList.add(ShopAgainFromRecentStoreModel.fromJson(store)));
+        data.forEach((store) => shopAgainFromRecentStoreList
+            .add(ShopAgainFromRecentStoreModel.fromJson(store)));
         notifyListeners();
       },
     );
@@ -148,10 +181,8 @@ class SellerProductController extends ChangeNotifier {
 
   void setFilterApply(bool value, {bool isUpdate = true}) {
     _isFilterApply = value;
-    if(isUpdate) {
+    if (isUpdate) {
       notifyListeners();
     }
   }
-
-
 }

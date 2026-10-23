@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\ActivationCheckMiddleware;
+use App\Http\Middleware\ApiRequestTraceMiddleware;
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\APIGuestMiddleware;
 use App\Http\Middleware\APILocalizationMiddleware;
@@ -45,6 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->group('api', [
             'throttle:3000,1',
             SubstituteBindings::class,
+            ApiRequestTraceMiddleware::class,
         ]);
         /*
         |--------------------------------------------------------------------------

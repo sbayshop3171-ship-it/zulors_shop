@@ -7,7 +7,10 @@ import 'package:zulors_shop_vendor/features/splash/domain/models/business_pages_
 import 'package:zulors_shop_vendor/features/splash/domain/models/config_model.dart';
 import 'package:zulors_shop_vendor/features/splash/domain/services/splash_service_interface.dart';
 import 'package:zulors_shop_vendor/helper/api_checker.dart';
+import 'package:zulors_shop_vendor/helper/color_helper.dart';
 import 'package:zulors_shop_vendor/main.dart';
+import 'package:zulors_shop_vendor/theme/controllers/theme_controller.dart';
+import 'package:provider/provider.dart';
 
 class SplashController extends ChangeNotifier {
   final SplashServiceInterface serviceInterface;
@@ -30,14 +33,13 @@ class SplashController extends ChangeNotifier {
   List<String>? get unitList => _unitList;
   List<ColorList>? get colorList => _colorList;
   int get unitIndex => _unitIndex;
-  int get colorIndex =>_colorIndex;
+  int get colorIndex => _colorIndex;
   List<String?> _shippingTypeList = [];
   final String _shippingStatusType = '';
   List<String?> get shippingTypeList => _shippingTypeList;
   String get shippingStatusType => _shippingStatusType;
   List<BusinessPageModel>? _defaultBusinessPages;
   List<BusinessPageModel>? get defaultBusinessPages => _defaultBusinessPages;
-
 
   ConfigModel? get configModel => _configModel;
   BaseUrls? get baseUrls => _baseUrls;
@@ -51,48 +53,66 @@ class SplashController extends ChangeNotifier {
   bool get firstTimeConnectionCheck => _firstTimeConnectionCheck;
   final bool _isLoading = false;
   bool get isLoading => _isLoading;
-
+  DateTime? _lastConfigRefreshAt;
+  bool _isRefreshingConfig = false;
 
   BuildContext? _buildContext;
 
+  void _applyConfigTheme() {
+    final currentContext = Get.context;
+    if (currentContext == null) return;
+    Provider.of<ThemeController>(currentContext, listen: false).setThemeColor(
+      primaryColor: ColorHelper.hexCodeToColor(_configModel?.primaryColorCode),
+      secondaryColor:
+          ColorHelper.hexCodeToColor(_configModel?.secondaryColorCode),
+    );
+  }
+
   ///Refector this
   Future<bool> initConfig() async {
-    _configModel = null;
     _hasConnection = true;
     ApiResponse apiResponse = await serviceInterface.getConfig();
     bool isSuccess;
-    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      _lastConfigRefreshAt = DateTime.now();
       _configModel = ConfigModel.fromJson(apiResponse.response!.data);
       _baseUrls = ConfigModel.fromJson(apiResponse.response!.data).baseUrls;
+      _applyConfigTheme();
       String? currencyCode = serviceInterface.getCurrency();
-      for(CurrencyList currencyList in _configModel!.currencyList!) {
-        if(currencyList.id == _configModel!.systemDefaultCurrency) {
-          if(currencyCode == null || currencyCode.isEmpty) {
+      for (CurrencyList currencyList in _configModel!.currencyList!) {
+        if (currencyList.id == _configModel!.systemDefaultCurrency) {
+          if (currencyCode == null || currencyCode.isEmpty) {
             currencyCode = currencyList.code;
           }
           _defaultCurrency = currencyList;
         }
-        if(currencyList.code == 'USD') {
+        if (currencyList.code == 'USD') {
           _usdCurrency = currencyList;
         }
       }
 
       getCurrencyData(currencyCode);
 
-      if(_configModel?.maintenanceModeData?.maintenanceStatus == 0){
-        if(_configModel?.maintenanceModeData?.selectedMaintenanceSystem?.vendorApp == 1 ) {
-          if(_configModel?.maintenanceModeData?.maintenanceTypeAndDuration?.maintenanceDuration == 'customize'){
-
+      if (_configModel?.maintenanceModeData?.maintenanceStatus == 0) {
+        if (_configModel
+                ?.maintenanceModeData?.selectedMaintenanceSystem?.vendorApp ==
+            1) {
+          if (_configModel?.maintenanceModeData?.maintenanceTypeAndDuration
+                  ?.maintenanceDuration ==
+              'customize') {
             DateTime now = DateTime.now();
-            DateTime specifiedDateTime = DateTime.parse(_configModel!.maintenanceModeData!.maintenanceTypeAndDuration!.startDate!);
+            DateTime specifiedDateTime = DateTime.parse(
+              _configModel!
+                  .maintenanceModeData!.maintenanceTypeAndDuration!.startDate!,
+            );
 
             Duration difference = specifiedDateTime.difference(now);
 
-
-            if(difference.inMinutes > 0 && (difference.inMinutes < 60 || difference.inMinutes == 60)){
+            if (difference.inMinutes > 0 &&
+                (difference.inMinutes < 60 || difference.inMinutes == 60)) {
               _startTimer(specifiedDateTime);
             }
-
           }
         }
       }
@@ -101,7 +121,8 @@ class SplashController extends ChangeNotifier {
     } else {
       isSuccess = false;
       ApiChecker.checkApi(apiResponse);
-      if(apiResponse.error.toString() == 'Connection to API server failed due to internet connection') {
+      if (apiResponse.error.toString() ==
+          'Connection to API server failed due to internet connection') {
         _hasConnection = false;
       }
     }
@@ -109,17 +130,50 @@ class SplashController extends ChangeNotifier {
     return isSuccess;
   }
 
+  Future<void> refreshConfig() async {
+    final now = DateTime.now();
+    if (_isRefreshingConfig ||
+        (_lastConfigRefreshAt != null &&
+            now.difference(_lastConfigRefreshAt!) <
+                const Duration(seconds: 30))) {
+      return;
+    }
+
+    _isRefreshingConfig = true;
+    _lastConfigRefreshAt = now;
+    try {
+      final apiResponse = await serviceInterface.getConfig();
+      final response = apiResponse.response;
+      if (response?.statusCode != 200 || response?.data is! Map) return;
+
+      _configModel = ConfigModel.fromJson(response!.data);
+      _baseUrls = _configModel?.baseUrls;
+      final currencyCode = serviceInterface.getCurrency();
+      if (_configModel?.currencyList != null) {
+        getCurrencyData(currencyCode);
+      }
+
+      _applyConfigTheme();
+      notifyListeners();
+    } catch (_) {
+      // Retain the last good server configuration when the network is unavailable.
+    } finally {
+      _isRefreshingConfig = false;
+    }
+  }
 
   Future<void> getBusinessPagesList(String type) async {
     ApiResponse apiResponse = await serviceInterface.getBusinessPages(type);
-    if (apiResponse.response != null && apiResponse.response!.statusCode == 200) {
-
-      if(type == 'default') {
+    if (apiResponse.response != null &&
+        apiResponse.response!.statusCode == 200) {
+      if (type == 'default') {
         _defaultBusinessPages = [];
-        apiResponse.response?.data.forEach((data) { _defaultBusinessPages?.add(BusinessPageModel.fromJson(data));});
+        apiResponse.response?.data.forEach((data) {
+          _defaultBusinessPages?.add(BusinessPageModel.fromJson(data));
+        });
       }
     } else {
-      ApiChecker.checkApi( apiResponse);
+      ApiChecker.checkApi(apiResponse);
     }
 
     notifyListeners();
@@ -131,7 +185,7 @@ class SplashController extends ChangeNotifier {
 
   void getCurrencyData(String? currencyCode) {
     for (var currency in _configModel!.currencyList!) {
-      if(currencyCode == currency.code) {
+      if (currencyCode == currency.code) {
         _myCurrency = currency;
         _currencyIndex = _configModel!.currencyList!.indexOf(currency);
         continue;
@@ -149,13 +203,12 @@ class SplashController extends ChangeNotifier {
     return colorIds;
   }
 
-
-
   void setCurrency(int index) {
     serviceInterface.setCurrency(_configModel!.currencyList![index].code!);
     getCurrencyData(_configModel!.currencyList![index].code);
     notifyListeners();
   }
+
   void setShippingType(int index) {
     serviceInterface.setShippingType(_shippingTypeList[index]!);
     notifyListeners();
@@ -166,7 +219,6 @@ class SplashController extends ChangeNotifier {
     notifyListeners();
   }
 
-
   void initSharedPrefData() {
     serviceInterface.initSharedData();
   }
@@ -175,49 +227,46 @@ class SplashController extends ChangeNotifier {
     _fromSetting = isSetting;
   }
 
-
-
-
   void initShippingTypeList(BuildContext context, String type) async {
     _shippingTypeList.clear();
-    _shippingTypeList =[];
-    ApiResponse apiResponse = await serviceInterface.getShippingTypeList(context,type);
+    _shippingTypeList = [];
+    ApiResponse apiResponse = await serviceInterface.getShippingTypeList(
+      context,
+      type,
+    );
     _shippingTypeList.addAll(apiResponse.response!.data);
     notifyListeners();
   }
 
-  void _startTimer (DateTime startTime){
+  void _startTimer(DateTime startTime) {
     Timer.periodic(const Duration(seconds: 30), (Timer timer) {
-
       DateTime now = DateTime.now();
 
       if (now.isAfter(startTime) || now.isAtSameMomentAs(startTime)) {
         timer.cancel();
-        Navigator.of(Get.context!).pushReplacement(MaterialPageRoute(
-          builder: (_) => const MaintenanceScreen(),
-          settings: const RouteSettings(name: 'MaintenanceScreen'),
-        )
+        Navigator.of(Get.context!).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const MaintenanceScreen(),
+            settings: const RouteSettings(name: 'MaintenanceScreen'),
+          ),
         );
       }
-
     });
   }
 
-
-
-  void setMaintenanceContext(BuildContext context){
+  void setMaintenanceContext(BuildContext context) {
     _buildContext = context;
   }
 
-  void removeMaintenanceContext(){
+  void removeMaintenanceContext() {
     _buildContext = null;
   }
 
   bool isMaintenanceModeScreen() {
-    if (_buildContext == null || configModel?.maintenanceModeData?.maintenanceStatus == 1) {
+    if (_buildContext == null ||
+        configModel?.maintenanceModeData?.maintenanceStatus == 1) {
       return false;
     }
     return ModalRoute.of(_buildContext!)?.settings.name == 'MaintenanceScreen';
   }
-
 }

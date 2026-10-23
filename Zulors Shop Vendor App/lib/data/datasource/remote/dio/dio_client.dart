@@ -1,6 +1,7 @@
 import 'dart:io';
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+import 'package:zulors_shop_vendor/data/datasource/remote/dio/api_diagnostics_interceptor.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zulors_shop_vendor/data/datasource/remote/dio/logging_interceptor.dart';
 import 'package:zulors_shop_vendor/utill/app_constants.dart';
@@ -13,29 +14,30 @@ class DioClient {
   Dio? dio;
   String? token;
 
-  DioClient(this.baseUrl,
-      Dio? dioC, {
-        required this.loggingInterceptor,
-        required this.sharedPreferences,
-      }) {
+  DioClient(
+    this.baseUrl,
+    Dio? dioC, {
+    required this.loggingInterceptor,
+    required this.sharedPreferences,
+  }) {
     token = sharedPreferences.getString(AppConstants.token);
-    if (kDebugMode) {
-      print(token);
-    }
     dio = dioC ?? Dio();
     dio!
       ..options.baseUrl = baseUrl
-      ..options.connectTimeout = const Duration(seconds: 60)
-      ..options.receiveTimeout = const Duration(seconds: 60)
+      ..options.connectTimeout = const Duration(seconds: 10)
+      ..options.sendTimeout = const Duration(seconds: 15)
+      ..options.receiveTimeout = const Duration(seconds: 20)
       ..httpClientAdapter
       ..options.headers = {
         'Content-Type': 'application/json; charset=UTF-8',
-        'Authorization': 'Bearer $token'
+        'Authorization': 'Bearer $token',
       };
+    dio!.interceptors.add(ApiDiagnosticsInterceptor(dio!));
     dio!.interceptors.add(loggingInterceptor);
   }
 
-  Future<Response> get(String uri, {
+  Future<Response> get(
+    String uri, {
     Map<String, dynamic>? queryParameters,
     Options? options,
     CancelToken? cancelToken,
@@ -59,7 +61,8 @@ class DioClient {
     }
   }
 
-  Future<Response> post(String uri, {
+  Future<Response> post(
+    String uri, {
     data,
     Map<String, dynamic>? queryParameters,
     Options? options,
@@ -86,7 +89,8 @@ class DioClient {
     }
   }
 
-  Future<Response> postMultipart(String uri, {
+  Future<Response> postMultipart(
+    String uri, {
     Map<String, dynamic>? data,
     List<MultipartWithKey>? files,
     String? fileKey,
@@ -95,9 +99,11 @@ class DioClient {
     CancelToken? cancelToken,
     ProgressCallback? onSendProgress,
     ProgressCallback? onReceiveProgress,
-    Map<String, dynamic>? otherFiles
+    Map<String, dynamic>? otherFiles,
   }) async {
-    debugPrint('apiCall ==> url=> $uri \nparams---> $queryParameters\nheader=> ${dio!.options.headers}');
+    debugPrint(
+      'apiCall ==> url=> $uri \nparams---> $queryParameters\nheader=> ${dio!.options.headers}',
+    );
 
     try {
       // List<MultipartFile> fileList = [];
@@ -111,33 +117,26 @@ class DioClient {
       //   }
       // }
 
-
-
-      for(int i = 0; i < (files?.length ?? 0); i++) {
-        data?.addAll({files![i].key : files[i].multipartFile});
+      for (int i = 0; i < (files?.length ?? 0); i++) {
+        data?.addAll({files![i].key: files[i].multipartFile});
       }
-
 
       // if(files?.isNotEmpty ?? false) {
       //   data?.addAll({
       //     '${fileKey ?? 'image'}[]' : files,
       //   });
       // }
-
-    } catch(e) {
+    } catch (e) {
       debugPrint('----exImage---$e-----');
       rethrow;
     }
 
     try {
-
-
-      for(int i=0; i<FormData.fromMap(data ?? {}).fields.length; i++){
-
-        debugPrint("=====FromData==$i=>>${FormData.fromMap(data ?? {}).fields[i]}");
-
+      for (int i = 0; i < FormData.fromMap(data ?? {}).fields.length; i++) {
+        debugPrint(
+          "=====FromData==$i=>>${FormData.fromMap(data ?? {}).fields[i]}",
+        );
       }
-
 
       var response = await dio!.post(
         uri,
@@ -157,7 +156,8 @@ class DioClient {
     }
   }
 
-  Future<Response> put(String uri, {
+  Future<Response> put(
+    String uri, {
     data,
     Map<String, dynamic>? queryParameters,
     Options? options,
@@ -183,7 +183,8 @@ class DioClient {
     }
   }
 
-  Future<Response> delete(String uri, {
+  Future<Response> delete(
+    String uri, {
     data,
     Map<String, dynamic>? queryParameters,
     Options? options,
@@ -204,14 +205,11 @@ class DioClient {
       rethrow;
     }
   }
-
 }
 
-class MultipartWithKey{
+class MultipartWithKey {
   final String key;
   final MultipartFile? multipartFile;
 
   MultipartWithKey({required this.key, this.multipartFile});
-
-
 }
