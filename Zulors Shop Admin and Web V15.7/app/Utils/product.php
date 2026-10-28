@@ -268,7 +268,7 @@ if (!function_exists('getFeaturedDealsProductList')) {
             Cache::put(CACHE_FOR_FEATURED_DEAL_PRODUCTS_LIST, $cacheKeys, CACHE_FOR_3_HOURS);
         }
 
-        return Cache::remember($cacheKey, CACHE_FOR_3_HOURS, function () {
+        return Cache::remember($cacheKey, CACHE_FOR_3_HOURS, function () use ($dataLimit) {
             $featuredDealID = FlashDeal::where(['deal_type' => 'feature_deal', 'status' => 1])
                 ->whereDate('start_date', '<=', date('Y-m-d'))
                 ->whereDate('end_date', '>=', date('Y-m-d'))->pluck('id')->first();
