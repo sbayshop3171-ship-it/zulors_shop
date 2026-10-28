@@ -256,8 +256,16 @@ $(document).ready(function () {
     }
 
     let isLoopHeroSlider = $(".hero-slider").data('loop')?.toString() === '1';
+    let heroSlider = $(".hero-slider");
 
-    $(".hero-slider").owlCarousel({
+    // Keep the non-active banners hidden in the server HTML to prevent a
+    // vertical stack before the carousel script runs. Reveal them immediately
+    // before Owl takes control, in the same task, so there is no paint between.
+    heroSlider.children("a").each(function () {
+        this.style.removeProperty("display");
+    });
+
+    heroSlider.owlCarousel({
         loop: isLoopHeroSlider,
         autoplay: isLoopHeroSlider,
         margin: 20,

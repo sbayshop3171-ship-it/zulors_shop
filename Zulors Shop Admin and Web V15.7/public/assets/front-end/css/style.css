@@ -6778,7 +6778,7 @@ a {
 }
 
 .hero-slider:not(.owl-loaded) > a:not(:first-child) {
-    display: none;
+    display: none !important;
 }
 
 @media screen and (max-width: 992px) {

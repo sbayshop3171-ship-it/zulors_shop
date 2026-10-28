@@ -51,7 +51,8 @@
                     <div class="{{Session::get('direction') === "rtl" ? 'pr-xl-2' : 'pl-xl-2'}}">
                         <div class="owl-theme owl-carousel hero-slider" data-loop="{{ count($bannerTypeMainBanner) > 1 ? 1 : 0 }}">
                             @foreach($bannerTypeMainBanner as $key=>$banner)
-                                <a href="{{$banner['url']}}" class="d-block" target="_blank">
+                                <a href="{{$banner['url']}}" class="d-block" target="_blank"
+                                    @if (!$loop->first) style="display:none!important" @endif>
                                 <img class="w-100 __slide-img __slide-img-170" alt=""
                                     loading="{{ $loop->first ? 'eager' : 'lazy' }}"
                                     fetchpriority="{{ $loop->first ? 'high' : 'auto' }}"
