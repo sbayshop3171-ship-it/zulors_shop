@@ -274,5 +274,5 @@
         @php(\Illuminate\Support\Facades\Cookie::queue('popup_banner', 'off', 1))
     @endif
     <script src="{{theme_asset(path: 'public/assets/front-end/js/owl.carousel.min.js')}}"></script>
-    <script src="{{ theme_asset(path: 'public/assets/front-end/js/home.js') }}"></script>
+    <script src="{{ theme_asset(path: 'public/assets/front-end/js/home.js') }}?v={{ file_exists(public_path('assets/front-end/js/home.js')) ? filemtime(public_path('assets/front-end/js/home.js')) : time() }}"></script>
 @endpush
