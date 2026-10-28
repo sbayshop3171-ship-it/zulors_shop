@@ -219,7 +219,9 @@
 <script>
     window.zulorsInstantNavigationConfig = {
         enabled: true,
-        prefetchLimit: 30,
+        prefetchLimit: 8,
+        maxConcurrentPrefetch: 2,
+        cachePartition: "{{ hash_hmac('sha256', session()->getId() . '|' . serialize(session()->all()) . '|' . (string) auth('customer')->id() . '|' . (string) getDefaultLanguage(), (string) config('app.key')) }}",
         serviceWorkerUrl: "{{ url('zulors-sw.js') }}?v={{ file_exists(public_path('zulors-sw.js')) ? filemtime(public_path('zulors-sw.js')) : time() }}"
     };
 </script>

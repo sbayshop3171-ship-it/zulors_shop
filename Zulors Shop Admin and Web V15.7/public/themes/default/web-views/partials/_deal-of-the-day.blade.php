@@ -25,7 +25,9 @@
                             </div>
                             <div class="__i-1 bg-transparent text-center mb-0">
                                 <div class="px-0">
-                                    @php($overallRating = getOverallRating($dealOfTheDay?->product['reviews']))
+                                    @php($overallRating = isset($dealOfTheDay?->product?->reviews_avg_rating)
+                                        ? [$dealOfTheDay->product->reviews_avg_rating, $dealOfTheDay->product->reviews_count ?? 0]
+                                        : getOverallRating($dealOfTheDay?->product['reviews']))
                                     @if($overallRating[0] != 0 )
                                         <div class="rating-show">
                                     <span class="d-inline-block font-size-sm text-body">
@@ -39,7 +41,7 @@
                                             @endif
                                         @endfor
                                         <label
-                                            class="badge-style">( {{ count($dealOfTheDay->product['reviews']) }} )</label>
+                                            class="badge-style">( {{ $overallRating[1] }} )</label>
                                     </span>
                                         </div>
                                     @endif
@@ -110,7 +112,9 @@
                                             ) }}
                                         </span>
                                     </h4>
-                                    @php($overallRating = getOverallRating($recommendedProduct['reviews']))
+                                    @php($overallRating = isset($recommendedProduct->reviews_avg_rating)
+                                        ? [$recommendedProduct->reviews_avg_rating, $recommendedProduct->reviews_count ?? 0]
+                                        : getOverallRating($recommendedProduct['reviews']))
                                         @if($overallRating[0] != 0 )
                                             <div class="rating-show">
                                             <span class="d-inline-block font-size-sm text-body">
@@ -123,7 +127,7 @@
                                                         <i class="tio-star-outlined text-warning"></i>
                                                     @endif
                                                 @endfor
-                                                <label class="badge-style">( {{ count($recommendedProduct->reviews) }} )</label>
+                                                <label class="badge-style">( {{ $overallRating[1] }} )</label>
                                             </span>
                                             </div>
                                         @endif

@@ -36,7 +36,10 @@
                                                     <div class="swiper-slide position-relative" data-color="{{ $colorCode }}">
                                                         <div class="easyzoom easyzoom--overlay is-ready">
                                                             <a href="{{ $imagePath }}">
-                                                                <img class="rounded h-100 aspect-1" alt="" src="{{ $imagePath }}">
+                                                                <img class="rounded h-100 aspect-1" alt="" src="{{ $imagePath }}"
+                                                                     loading="{{ $key === 0 ? 'eager' : 'lazy' }}"
+                                                                     fetchpriority="{{ $key === 0 ? 'high' : 'auto' }}"
+                                                                     decoding="async">
                                                             </a>
                                                         </div>
                                                     </div>
@@ -98,7 +101,7 @@
                                                                 : getStorageImages(path: $photo, type: 'backend-product');
                                                         @endphp
                                                         <div class="swiper-slide position-relative rounded border" role="group">
-                                                            <img class="aspect-1" alt="" src="{{ $imagePath }}">
+                                                            <img class="aspect-1" alt="" src="{{ $imagePath }}" loading="lazy" decoding="async">
                                                         </div>
                                                     @endforeach
                                                 </div>
@@ -512,7 +515,7 @@
                                     </div>
 
                                     <div class="tab-pane fade" id="reviews" role="tabpanel">
-                                        @if(count($product->reviews)==0 && $productReviews->total() == 0)
+                                        @if(($product->reviews_count ?? 0) == 0 && $productReviews->total() == 0)
                                             <div>
                                                 <div class="text-center text-capitalize">
                                                     <img class="mw-100"
@@ -681,7 +684,7 @@
                                                 @include('web-views.partials._product-reviews')
                                             </div>
 
-                                            @if(count($product->reviews) > 2)
+                                            @if(($product->reviews_count ?? 0) > 2)
                                                 <div class="col-12">
                                                     <div
                                                         class="card-footer d-flex justify-content-center align-items-center">
@@ -774,7 +777,7 @@
                                                                 src="{{ theme_asset(path: 'public/assets/front-end/img/products.svg') }}"
                                                                 class="mb-2" alt="">
                                                             <div class="__text-12px text-base">
-                                                                <strong>{{ $productsForReview->total() }}</strong>
+                                                                <strong>{{ $productsForReviewCount }}</strong>
                                                                 {{ translate('products') }}
                                                             </div>
                                                         </div>
@@ -868,7 +871,7 @@
                                                             src="{{ theme_asset(path: 'public/assets/front-end/img/products.svg') }}"
                                                             class="mb-2" alt="">
                                                         <div class="__text-12px text-base">
-                                                            <strong>{{ $productsForReview->total() }}</strong>
+                                                            <strong>{{ $productsForReviewCount }}</strong>
                                                             {{ translate('products') }}
                                                         </div>
                                                     </div>

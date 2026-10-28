@@ -80,7 +80,10 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
 Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestCheck']], function () {
 
     Route::controller(HomeController::class)->group(function () {
-        Route::get('/', 'index')->name('home');
+        Route::get('/', 'index')->name('home')->middleware('storefront.navigation-cache');
+        Route::get('home-section/{section}/{id?}', 'homeSection')
+            ->whereNumber('id')
+            ->name('home-section');
     });
 
     Route::controller(WebController::class)->group(function () {
@@ -116,11 +119,11 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
         Route::post('subscription', 'subscription')->name('subscription');
         Route::get('search-shop', 'search_shop')->name('search-shop');
 
-        Route::get('categories', 'getAllCategoriesView')->name('categories');
+        Route::get('categories', 'getAllCategoriesView')->name('categories')->middleware('storefront.navigation-cache');
         Route::get('category-ajax/{id}', 'categories_by_category')->name('category-ajax');
 
-        Route::get('brands', 'getAllBrandsView')->name('brands');
-        Route::get('vendors', 'getAllVendorsView')->name('vendors');
+        Route::get('brands', 'getAllBrandsView')->name('brands')->middleware('storefront.navigation-cache');
+        Route::get('vendors', 'getAllVendorsView')->name('vendors')->middleware('storefront.navigation-cache');
         Route::get('seller-profile/{id}', 'seller_profile')->name('seller-profile');
     });
 
@@ -131,24 +134,24 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
     });
 
     Route::controller(ProductDetailsController::class)->group(function () {
-        Route::get('/product/{slug}', 'index')->name('product');
+        Route::get('/product/{slug}', 'index')->name('product')->middleware('storefront.navigation-cache');
     });
 
     Route::controller(ProductListController::class)->group(function () {
-        Route::get('products', 'products')->name('products');
-        Route::get('flash-deals/{id}', 'getFlashDealsView')->name('flash-deals');
+        Route::get('products', 'products')->name('products')->middleware('storefront.navigation-cache');
+        Route::get('flash-deals/{id}', 'getFlashDealsView')->name('flash-deals')->middleware('storefront.navigation-cache');
         Route::post('flash-deals/{id}', 'getFlashDealsProducts');
 
-        Route::get('brand/{slug}', 'getBrandProductsView')->name('brand-products');
-        Route::get('category/{slug}', 'getCategoryProductsView')->name('category-products');
-        Route::get('featured-products', 'getFeaturedProductsView')->name('featured-products');
-        Route::get('featured-deal-products', 'getFeaturedDealProductsView')->name('featured-deal-products');
-        Route::get('latest-products', 'getLatestProductsView')->name('latest-products');
-        Route::get('best-selling-products', 'getBestSellingProductsView')->name('best-selling-products');
-        Route::get('top-rated-products', 'getTopRatedProductsView')->name('top-rated-products');
+        Route::get('brand/{slug}', 'getBrandProductsView')->name('brand-products')->middleware('storefront.navigation-cache');
+        Route::get('category/{slug}', 'getCategoryProductsView')->name('category-products')->middleware('storefront.navigation-cache');
+        Route::get('featured-products', 'getFeaturedProductsView')->name('featured-products')->middleware('storefront.navigation-cache');
+        Route::get('featured-deal-products', 'getFeaturedDealProductsView')->name('featured-deal-products')->middleware('storefront.navigation-cache');
+        Route::get('latest-products', 'getLatestProductsView')->name('latest-products')->middleware('storefront.navigation-cache');
+        Route::get('best-selling-products', 'getBestSellingProductsView')->name('best-selling-products')->middleware('storefront.navigation-cache');
+        Route::get('top-rated-products', 'getTopRatedProductsView')->name('top-rated-products')->middleware('storefront.navigation-cache');
         Route::get('most-favorite-products', 'getMostFavoriteProductsView')->name('most-favorite-products');
-        Route::get('discounted-products', 'getDiscountedProductsView')->name('discounted-products');
-        Route::get('clearance-sale-products', 'getClearanceSaleProductsView')->name('clearance-sale-products');
+        Route::get('discounted-products', 'getDiscountedProductsView')->name('discounted-products')->middleware('storefront.navigation-cache');
+        Route::get('clearance-sale-products', 'getClearanceSaleProductsView')->name('clearance-sale-products')->middleware('storefront.navigation-cache');
     });
 
     Route::controller(ShopViewController::class)->group(function () {

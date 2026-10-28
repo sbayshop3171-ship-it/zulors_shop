@@ -258,9 +258,10 @@ if (!function_exists('getProductMinUnitPriceRange')) {
 }
 
 if (!function_exists('getFeaturedDealsProductList')) {
-    function getFeaturedDealsProductList()
+    function getFeaturedDealsProductList($dataLimit = 12)
     {
-        $cacheKey = 'cache_for_Featured_deals_products_list_' . getDefaultLanguage();
+        $limitKey = $dataLimit === 'all' ? 'all' : (string) $dataLimit;
+        $cacheKey = 'cache_for_Featured_deals_products_list_' . getDefaultLanguage() . '_' . $limitKey;
         $cacheKeys = Cache::get(CACHE_FOR_FEATURED_DEAL_PRODUCTS_LIST, []);
         if (!in_array($cacheKey, $cacheKeys)) {
             $cacheKeys[] = $cacheKey;
@@ -276,7 +277,7 @@ if (!function_exists('getFeaturedDealsProductList')) {
                 query: Product::active()->with(['category', 'clearanceSale' => function ($query) {
                     return $query->active();
                 }])->whereIn('id', $featuredDealProductIDs),
-                dataLimit: 'all'
+                dataLimit: $dataLimit
             );
         });
     }

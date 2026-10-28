@@ -1,5 +1,7 @@
 @if(isset($product))
-    @php($overallRating = getOverallRating($product?->reviews))
+    @php($overallRating = isset($product->reviews_avg_rating)
+        ? [$product->reviews_avg_rating, $product->reviews_count ?? 0]
+        : getOverallRating($product?->reviews))
     <div class="product-single-hover shadow-none rtl">
         @if(getProductPriceByType(product: $product, type: 'discount', result: 'value') > 0)
             <span class="for-discount-value p-1 pl-2 pr-2 font-bold fs-13">
@@ -13,7 +15,7 @@
             <div class="inline_product clickable">
                 <span class="for-discount-value-null"></span>
                 <a href="{{route('product',$product->slug)}}" class="rounded">
-                    <img loading="lazy" class="border border-black-50" src="{{ getStorageImages(path: $product->thumbnail_full_url, type: 'product') }}" alt="">
+                    <img loading="{{ !empty($prioritizeImage) ? 'eager' : 'lazy' }}" fetchpriority="{{ !empty($prioritizeImage) ? 'high' : 'auto' }}" decoding="async" width="180" height="180" class="border border-black-50" src="{{ getStorageImages(path: $product->thumbnail_full_url, type: 'product') }}" alt="">
                 </a>
                 <div class="quick-view">
                     <div class="d-none d-md-flex gap-2 align-items-center quick-view-tag">
@@ -65,7 +67,7 @@
                                <i class="tio-star-outlined text-warning"></i>
                            @endif
                        @endfor
-                       <label class="badge-style">( {{ count($product->reviews) }} )</label>
+                       <label class="badge-style">( {{ $overallRating[1] }} )</label>
                    </span>
                     </div>
                 @endif

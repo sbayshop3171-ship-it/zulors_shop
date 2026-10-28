@@ -2,59 +2,33 @@
 
 (function () {
     const config = window.zulorsInstantNavigationConfig || {};
-    if (config.enabled === false) {
-        return;
-    }
+    if (config.enabled === false) return;
 
-    const prefetchLimit = Number(config.prefetchLimit || 24);
+    const prefetchLimit = Math.max(0, Math.min(Number(config.prefetchLimit || 8), 8));
+    const maxConcurrentPrefetch = Math.max(1, Math.min(Number(config.maxConcurrentPrefetch || 2), 2));
     const prefetchedUrls = new Set();
-    let totalPrefetched = 0;
+    const queue = [];
+    const pendingPrefetches = new Map();
+    let prefetchSequence = 0;
+    let activePrefetches = 0;
     let serviceWorkerRegistration = null;
     let scanQueued = false;
+    let progressTimer = null;
 
-    const excludedPrefixes = [
-        "/admin",
-        "/api",
-        "/vendor",
-        "/seller",
-        "/customer",
-        "/user-account",
-        "/account",
-        "/shop-cart",
-        "/cart",
-        "/checkout",
-        "/payment",
-        "/wishlists",
-        "/compare",
-        "/chat",
-        "/messages",
-        "/track-order",
-        "/order",
-        "/digital-product-download",
-        "/login",
-        "/logout",
-    ];
+    const eligiblePath = /^\/$|^\/product\/[^/]+\/?$|^\/products\/?$|^\/brand\/[^/]+\/?$|^\/category\/[^/]+\/?$|^\/(featured-products|featured-deal-products|latest-products|best-selling-products|top-rated-products|discounted-products|clearance-sale-products|brands|categories|vendors)\/?$|^\/flash-deals\/\d+\/?$/;
+    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const constrainedConnection = !!(connection && (connection.saveData || /^(slow-)?2g$/i.test(connection.effectiveType || "")));
 
-    function supportsLinkPrefetch() {
-        const link = document.createElement("link");
-        return !!(link.relList && link.relList.supports && link.relList.supports("prefetch"));
+    function shouldPrefetch() {
+        return !constrainedConnection && prefetchLimit > 0 && document.visibilityState !== "hidden";
     }
 
     function normalizeUrl(rawUrl) {
         try {
             const url = new URL(rawUrl, window.location.origin);
-            if (url.origin !== window.location.origin) {
-                return null;
-            }
-
-            if (url.hash && url.pathname === window.location.pathname && url.search === window.location.search) {
-                return null;
-            }
-
-            if (excludedPrefixes.some((prefix) => url.pathname.startsWith(prefix))) {
-                return null;
-            }
-
+            if (url.origin !== window.location.origin || !eligiblePath.test(url.pathname)) return null;
+            if (url.pathname === window.location.pathname && url.search === window.location.search) return null;
+            if (url.username || url.password || url.hash) return null;
             return url.toString();
         } catch (error) {
             return null;
@@ -62,135 +36,105 @@
     }
 
     function getPrefetchUrl(target) {
-        if (!(target instanceof Element)) {
-            return null;
-        }
-
-        const clickableElement = target.closest("a[href], [data-prefetch-url], .get-view-by-onclick[data-link]");
-        if (!clickableElement) {
-            return null;
-        }
-
-        if (clickableElement.matches("a[href]")) {
-            const targetValue = clickableElement.getAttribute("target");
-            if (targetValue && targetValue !== "_self") {
-                return null;
-            }
-
-            if (clickableElement.hasAttribute("download")) {
-                return null;
-            }
-
-            return normalizeUrl(clickableElement.href);
-        }
-
-        return normalizeUrl(clickableElement.dataset.prefetchUrl || clickableElement.dataset.link || "");
+        if (!(target instanceof Element)) return null;
+        const link = target.closest("a[href], [data-prefetch-url], .get-view-by-onclick[data-link]");
+        if (!link) return null;
+        if (link.matches("a[href]") && ((link.target && link.target !== "_self") || link.hasAttribute("download"))) return null;
+        return normalizeUrl(link.matches("a[href]") ? link.href : (link.dataset.prefetchUrl || link.dataset.link || ""));
     }
 
-    function postMessageToServiceWorker(url) {
-        const worker =
-            serviceWorkerRegistration?.active ||
-            serviceWorkerRegistration?.waiting ||
-            serviceWorkerRegistration?.installing ||
-            navigator.serviceWorker?.controller;
+    function activeWorker() {
+        return serviceWorkerRegistration?.active || navigator.serviceWorker?.controller || null;
+    }
 
-        if (!worker || typeof worker.postMessage !== "function") {
-            return false;
-        }
-
-        worker.postMessage({
-            type: "PREFETCH_URL",
-            url: url,
-        });
+    function sendWorkerMessage(message) {
+        const worker = activeWorker();
+        if (!worker || typeof worker.postMessage !== "function") return false;
+        worker.postMessage(message);
         return true;
     }
 
-    function prefetchUrl(rawUrl, options) {
+    function sendPartition() {
+        if (!config.cachePartition) return;
+        sendWorkerMessage({ type: "SET_CACHE_PARTITION", partition: config.cachePartition });
+    }
+
+    function startPrefetch(rawUrl, highPriority) {
+        if (!shouldPrefetch()) return;
         const url = normalizeUrl(rawUrl);
-        const highPriority = !!options?.highPriority;
-
-        if (!url || prefetchedUrls.has(url)) {
-            return;
-        }
-
-        if (!highPriority && totalPrefetched >= prefetchLimit) {
-            return;
-        }
-
+        if (!url || prefetchedUrls.has(url) || prefetchedUrls.size >= prefetchLimit) return;
         prefetchedUrls.add(url);
-        totalPrefetched += 1;
+        if (highPriority) queue.unshift(url);
+        else queue.push(url);
+        drainQueue();
+    }
 
-        if (postMessageToServiceWorker(url)) {
-            return;
+    function drainQueue() {
+        while (shouldPrefetch() && activePrefetches < maxConcurrentPrefetch && queue.length) {
+            const url = queue.shift();
+            activePrefetches += 1;
+            prefetch(url).finally(function () {
+                activePrefetches = Math.max(0, activePrefetches - 1);
+                drainQueue();
+            });
+        }
+    }
+
+    function prefetch(url) {
+        const worker = activeWorker();
+        if (worker && typeof worker.postMessage === "function") {
+            const id = ++prefetchSequence;
+            return new Promise(function (resolve) {
+                const timeout = window.setTimeout(function () {
+                    pendingPrefetches.delete(id);
+                    resolve();
+                }, 12000);
+                pendingPrefetches.set(id, function () {
+                    window.clearTimeout(timeout);
+                    pendingPrefetches.delete(id);
+                    resolve();
+                });
+                worker.postMessage({ type: "PREFETCH_URL", url: url, partition: config.cachePartition, id: id });
+            });
         }
 
-        if (supportsLinkPrefetch()) {
-            const link = document.createElement("link");
-            link.rel = "prefetch";
-            link.as = "document";
-            link.href = url;
-            document.head.appendChild(link);
-            return;
-        }
-
-        fetch(url, {
-            credentials: "include",
-            mode: "same-origin",
-            headers: {
-                "X-Zulors-Prefetch": "1",
-            },
-        }).catch(function () {
-            prefetchedUrls.delete(url);
-        });
+        const link = document.createElement("link");
+        link.rel = "prefetch";
+        link.as = "document";
+        link.href = url;
+        document.head.appendChild(link);
+        return new Promise(function (resolve) { window.setTimeout(resolve, 500); });
     }
 
     function registerServiceWorker() {
-        if (!("serviceWorker" in navigator) || !config.serviceWorkerUrl) {
-            return;
-        }
+        if (!("serviceWorker" in navigator) || !config.serviceWorkerUrl) return;
 
-        navigator.serviceWorker
-            .register(config.serviceWorkerUrl, { scope: "/" })
+        navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: "/" })
             .then(function (registration) {
                 serviceWorkerRegistration = registration;
+                sendPartition();
+                registration.addEventListener("updatefound", sendPartition);
             })
-            .catch(function () {
-                serviceWorkerRegistration = null;
-            });
+            .catch(function () { serviceWorkerRegistration = null; });
 
-        navigator.serviceWorker.ready
-            .then(function (registration) {
-                serviceWorkerRegistration = registration;
-            })
-            .catch(function () {
-                serviceWorkerRegistration = null;
-            });
+        navigator.serviceWorker.ready.then(function (registration) {
+            serviceWorkerRegistration = registration;
+            sendPartition();
+        }).catch(function () { serviceWorkerRegistration = null; });
+
+        navigator.serviceWorker.addEventListener("controllerchange", sendPartition);
     }
 
     function observeVisibleTargets() {
-        const targets = document.querySelectorAll("a[href], .get-view-by-onclick[data-link], [data-prefetch-url]");
-
-        targets.forEach(function (target) {
-            if (target.dataset.prefetchObserved === "true") {
-                return;
-            }
-
+        document.querySelectorAll("a[href], .get-view-by-onclick[data-link], [data-prefetch-url]").forEach(function (target) {
+            if (target.dataset.prefetchObserved === "true") return;
             target.dataset.prefetchObserved = "true";
-
-            if (visibilityObserver) {
-                visibilityObserver.observe(target);
-            } else if (totalPrefetched < prefetchLimit) {
-                const rawUrl = target.matches("a[href]") ? target.href : (target.dataset.prefetchUrl || target.dataset.link || "");
-                prefetchUrl(rawUrl);
-            }
+            if (visibilityObserver) visibilityObserver.observe(target);
         });
     }
 
     function queueVisibleTargetScan() {
-        if (scanQueued) {
-            return;
-        }
-
+        if (scanQueued) return;
         scanQueued = true;
         window.requestAnimationFrame(function () {
             scanQueued = false;
@@ -198,105 +142,126 @@
         });
     }
 
-    const visibilityObserver =
-        "IntersectionObserver" in window
-            ? new IntersectionObserver(
-                  function (entries) {
-                      entries.forEach(function (entry) {
-                          if (!entry.isIntersecting) {
-                              return;
-                          }
+    const visibilityObserver = "IntersectionObserver" in window
+        ? new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                const url = getPrefetchUrl(entry.target);
+                if (url) startPrefetch(url, false);
+                visibilityObserver.unobserve(entry.target);
+            });
+        }, { rootMargin: "150px 0px", threshold: 0.01 })
+        : null;
 
-                          const target = entry.target;
-                          const rawUrl = target.matches("a[href]")
-                              ? target.href
-                              : target.dataset.prefetchUrl || target.dataset.link || "";
+    function ensureProgressBar() {
+        let bar = document.getElementById("zulors-navigation-progress");
+        if (!bar) {
+            bar = document.createElement("div");
+            bar.id = "zulors-navigation-progress";
+            bar.setAttribute("role", "progressbar");
+            bar.setAttribute("aria-label", "Loading page");
+            document.body.appendChild(bar);
+        }
+        return bar;
+    }
 
-                          prefetchUrl(rawUrl);
-                          visibilityObserver.unobserve(target);
-                      });
-                  },
-                  {
-                      rootMargin: "200px 0px",
-                      threshold: 0.01,
-                  }
-              )
-            : null;
+    function showNavigationFeedback() {
+        const bar = ensureProgressBar();
+        bar.classList.remove("is-complete");
+        bar.classList.add("is-visible");
+        if (progressTimer) window.clearTimeout(progressTimer);
+        progressTimer = window.setTimeout(function () {
+            bar.classList.add("is-complete");
+            bar.classList.remove("is-visible");
+        }, 1800);
+    }
 
-    document.addEventListener(
-        "pointerover",
-        function (event) {
-            const url = getPrefetchUrl(event.target);
-            if (url) {
-                prefetchUrl(url);
+    document.addEventListener("pointerover", function (event) {
+        const url = getPrefetchUrl(event.target);
+        if (url) startPrefetch(url, true);
+    }, { passive: true, capture: true });
+
+    document.addEventListener("touchstart", function (event) {
+        const url = getPrefetchUrl(event.target);
+        if (url) startPrefetch(url, true);
+    }, { passive: true, capture: true });
+
+    document.addEventListener("click", function (event) {
+        const url = getPrefetchUrl(event.target);
+        if (url) {
+            startPrefetch(url, true);
+            showNavigationFeedback();
+        }
+    }, { passive: true, capture: true });
+
+    if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.addEventListener("message", function (event) {
+            if (event.data?.type !== "PREFETCH_DONE") return;
+            const done = pendingPrefetches.get(event.data.id);
+            if (done) done();
+        });
+    }
+
+    window.clearZulorsPrefetchedPages = function () {
+        sendWorkerMessage({ type: "CLEAR_PARTITION_CACHE" });
+        prefetchedUrls.clear();
+        queue.length = 0;
+        document.querySelectorAll("a[href], .get-view-by-onclick[data-link], [data-prefetch-url]").forEach(function (target) {
+            delete target.dataset.prefetchObserved;
+        });
+        queueVisibleTargetScan();
+    };
+
+    if (window.jQuery) {
+        const stateChangingEndpoints = [
+            "#route-cart-add",
+            "#route-cart-remove",
+            "#route-cart-updateQuantity",
+            "#route-cart-updateQuantity-guest",
+            "#route-currency-change",
+            "#route-store-wishlist",
+            "#route-delete-wishlist",
+        ];
+
+        jQuery(document).on("ajaxSuccess", function (_event, _xhr, settings) {
+            let requestUrl;
+            try {
+                requestUrl = new URL(settings.url, window.location.origin);
+            } catch (error) {
+                return;
             }
-        },
-        { passive: true, capture: true }
-    );
 
-    document.addEventListener(
-        "touchstart",
-        function (event) {
-            const url = getPrefetchUrl(event.target);
-            if (url) {
-                prefetchUrl(url, { highPriority: true });
-            }
-        },
-        { passive: true, capture: true }
-    );
+            const changesCachedStorefrontState = stateChangingEndpoints.some(function (selector) {
+                const endpoint = document.querySelector(selector)?.dataset.url;
+                if (!endpoint) return false;
+                try {
+                    const endpointUrl = new URL(endpoint, window.location.origin);
+                    return endpointUrl.origin === requestUrl.origin && endpointUrl.pathname === requestUrl.pathname;
+                } catch (error) {
+                    return false;
+                }
+            });
 
-    document.addEventListener(
-        "mousedown",
-        function (event) {
-            const url = getPrefetchUrl(event.target);
-            if (url) {
-                prefetchUrl(url, { highPriority: true });
-            }
-        },
-        { passive: true, capture: true }
-    );
-
-    document.addEventListener(
-        "click",
-        function (event) {
-            const url = getPrefetchUrl(event.target);
-            if (url) {
-                prefetchUrl(url, { highPriority: true });
-            }
-        },
-        { passive: true, capture: true }
-    );
+            if (changesCachedStorefrontState) window.clearZulorsPrefetchedPages();
+        });
+    }
 
     if ("MutationObserver" in window) {
-        const mutationObserver = new MutationObserver(function () {
-            queueVisibleTargetScan();
-        });
-
+        const mutationObserver = new MutationObserver(queueVisibleTargetScan);
         document.addEventListener("DOMContentLoaded", function () {
-            mutationObserver.observe(document.body, {
-                childList: true,
-                subtree: true,
-            });
-        });
+            mutationObserver.observe(document.body, { childList: true, subtree: true });
+        }, { once: true });
     }
 
     if (document.readyState === "loading") {
         document.addEventListener("DOMContentLoaded", function () {
             registerServiceWorker();
             queueVisibleTargetScan();
-        });
+        }, { once: true });
     } else {
         registerServiceWorker();
         queueVisibleTargetScan();
     }
 
-    window.addEventListener("load", function () {
-        queueVisibleTargetScan();
-    });
-
-    document.addEventListener("visibilitychange", function () {
-        if (!document.hidden) {
-            queueVisibleTargetScan();
-        }
-    });
+    window.addEventListener("load", queueVisibleTargetScan, { once: true });
 })();

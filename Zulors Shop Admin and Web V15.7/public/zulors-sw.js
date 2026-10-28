@@ -1,36 +1,27 @@
 "use strict";
 
-const CACHE_VERSION = "2026-08-14-01";
+const CACHE_VERSION = "2026-10-28-01";
 const STATIC_CACHE = "zulors-static-" + CACHE_VERSION;
 const NAVIGATION_CACHE = "zulors-navigation-" + CACHE_VERSION;
-const NAVIGATION_TTL_MS = 5 * 60 * 1000;
+const NAVIGATION_TTL_MS = 60 * 1000;
+const NAVIGATION_CACHE_MAX_ENTRIES = 40;
 const SAME_ORIGIN = self.location.origin;
 const STATIC_ASSET_PATTERN = /\.(?:css|js|mjs|png|jpg|jpeg|gif|svg|webp|avif|ico|woff2?|ttf|otf|eot)$/i;
-const EXCLUDED_NAVIGATION_PREFIXES = [
-    "/admin",
-    "/api",
-    "/vendor",
-    "/seller",
-    "/customer",
-    "/user-account",
-    "/account",
-    "/shop-cart",
-    "/cart",
-    "/checkout",
-    "/payment",
-    "/wishlists",
-    "/compare",
-    "/chat",
-    "/messages",
-    "/track-order",
-    "/order",
-    "/digital-product-download",
-    "/login",
-    "/logout",
+const ALLOWED_NAVIGATION_PATTERNS = [
+    /^\/$/,
+    /^\/product\/[^/]+\/?$/,
+    /^\/products\/?$/,
+    /^\/brand\/[^/]+\/?$/,
+    /^\/category\/[^/]+\/?$/,
+    /^\/(?:featured-products|featured-deal-products|latest-products|best-selling-products|top-rated-products|discounted-products|clearance-sale-products|brands|categories|vendors)\/?$/,
+    /^\/flash-deals\/\d+\/?$/,
 ];
+const clientPartitions = new Map();
+let lastNavigationPruneAt = 0;
+let navigationPrunePromise = null;
 
-self.addEventListener("install", function () {
-    self.skipWaiting();
+self.addEventListener("install", function (event) {
+    event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener("activate", function (event) {
@@ -41,9 +32,7 @@ self.addEventListener("activate", function (event) {
                     .filter(function (key) {
                         return key.startsWith("zulors-") && key !== STATIC_CACHE && key !== NAVIGATION_CACHE;
                     })
-                    .map(function (key) {
-                        return caches.delete(key);
-                    })
+                    .map(function (key) { return caches.delete(key); })
             );
         }).then(function () {
             return self.clients.claim();
@@ -53,127 +42,214 @@ self.addEventListener("activate", function (event) {
 
 self.addEventListener("message", function (event) {
     const data = event.data || {};
-    if (data.type === "PREFETCH_URL" && typeof data.url === "string") {
-        event.waitUntil(prefetchNavigationUrl(data.url));
+    const clientId = event.source && event.source.id;
+
+    if (data.type === "SET_CACHE_PARTITION" && clientId && /^[a-f0-9]{64}$/.test(data.partition || "")) {
+        clientPartitions.set(clientId, data.partition);
+        return;
+    }
+
+    if (data.type === "PREFETCH_URL" && typeof data.url === "string" && clientId) {
+        const partition = clientPartitions.get(clientId)
+            || (/^[a-f0-9]{64}$/.test(data.partition || "") ? data.partition : null);
+        if (partition) clientPartitions.set(clientId, partition);
+        if (partition) {
+            event.waitUntil(prefetchNavigationUrl(data.url, partition).finally(function () {
+                event.source.postMessage({ type: "PREFETCH_DONE", id: data.id });
+            }));
+        }
+        return;
+    }
+
+    if (data.type === "CLEAR_PARTITION_CACHE" && clientId) {
+        const partition = clientPartitions.get(clientId);
+        if (partition) event.waitUntil(clearPartitionCache(partition));
     }
 });
 
 self.addEventListener("fetch", function (event) {
     const request = event.request;
-    if (request.method !== "GET") {
-        return;
-    }
+    if (request.method !== "GET") return;
 
     const url = new URL(request.url);
-    if (url.origin !== SAME_ORIGIN) {
-        return;
-    }
+    if (url.origin !== SAME_ORIGIN) return;
 
     if (request.mode === "navigate") {
-        if (!shouldCacheNavigation(url)) {
-            return;
-        }
+        if (!shouldCacheNavigation(url)) return;
 
-        event.respondWith(handleNavigationRequest(request));
+        // No partition has been provided yet (for example, a first visit or
+        // a new tab): bypass HTML caching and let Laravel serve the response.
+        const partition = clientPartitions.get(event.clientId);
+        if (!partition) return;
+
+        event.respondWith(handleNavigationRequest(request, partition, event));
         return;
     }
 
     if (STATIC_ASSET_PATTERN.test(url.pathname)) {
-        event.respondWith(handleStaticAssetRequest(request));
+        event.respondWith(handleStaticAssetRequest(request, event));
     }
 });
 
-async function handleStaticAssetRequest(request) {
+async function handleStaticAssetRequest(request, event) {
     const cache = await caches.open(STATIC_CACHE);
     const cachedResponse = await cache.match(request);
+    if (cachedResponse) {
+        event.waitUntil(refreshStaticAsset(request, cache));
+        return cachedResponse;
+    }
 
-    const networkFetch = fetch(request)
-        .then(function (response) {
-            if (response.ok) {
-                cache.put(request, response.clone());
-            }
-            return response;
-        })
-        .catch(function () {
-            return cachedResponse;
-        });
-
-    return cachedResponse || networkFetch;
+    const response = await fetch(request);
+    if (response.ok && isCacheableStaticAsset(response)) {
+        await cache.put(request, response.clone());
+    }
+    return response;
 }
 
-async function handleNavigationRequest(request) {
+function refreshStaticAsset(request, cache) {
+    fetch(request).then(function (response) {
+        if (response.ok && isCacheableStaticAsset(response)) return cache.put(request, response.clone());
+        return null;
+    }).catch(function () { return null; });
+}
+
+async function handleNavigationRequest(request, partition, event) {
     const cache = await caches.open(NAVIGATION_CACHE);
-    const cachedResponse = await cache.match(request);
+    await pruneNavigationCache(cache);
+    const cacheKey = navigationCacheKey(request.url, partition);
+    const cachedResponse = await cache.match(cacheKey);
 
     if (cachedResponse && isNavigationCacheFresh(cachedResponse)) {
-        refreshNavigationCache(request);
+        event.waitUntil(refreshNavigationCache(request, partition, cacheKey));
         return cachedResponse;
     }
 
     try {
-        const networkResponse = await fetch(request);
-        if (networkResponse.ok && isHtmlResponse(networkResponse)) {
-            await cache.put(request, await createTimestampedResponse(networkResponse.clone()));
+        const response = await fetchNavigation(request, partition);
+        if (isCacheableNavigationResponse(response, partition)) {
+            await cache.put(cacheKey, await createTimestampedResponse(response.clone()));
         }
-        return networkResponse;
+        return response;
     } catch (error) {
-        if (cachedResponse) {
-            return cachedResponse;
-        }
         throw error;
     }
 }
 
-async function refreshNavigationCache(request) {
+async function refreshNavigationCache(request, partition, cacheKey) {
     try {
-        const response = await fetch(request);
-        if (response.ok && isHtmlResponse(response)) {
+        const response = await fetchNavigation(request, partition);
+        if (isCacheableNavigationResponse(response, partition)) {
             const cache = await caches.open(NAVIGATION_CACHE);
-            await cache.put(request, await createTimestampedResponse(response.clone()));
+            await cache.put(cacheKey, await createTimestampedResponse(response.clone()));
         }
     } catch (error) {
         return null;
     }
-
     return null;
 }
 
-async function prefetchNavigationUrl(rawUrl) {
-    const url = new URL(rawUrl, SAME_ORIGIN);
-    if (url.origin !== SAME_ORIGIN || !shouldCacheNavigation(url)) {
+async function prefetchNavigationUrl(rawUrl, partition) {
+    let url;
+    try {
+        url = new URL(rawUrl, SAME_ORIGIN);
+    } catch (error) {
         return;
     }
 
-    const request = new Request(url.toString(), {
-        method: "GET",
-        credentials: "include",
-        mode: "same-origin",
-        headers: {
-            "X-Zulors-Prefetch": "1",
-        },
-    });
+    if (url.origin !== SAME_ORIGIN || !shouldCacheNavigation(url)) return;
 
     const cache = await caches.open(NAVIGATION_CACHE);
-    const cachedResponse = await cache.match(request);
-    if (cachedResponse && isNavigationCacheFresh(cachedResponse)) {
-        return;
-    }
+    await pruneNavigationCache(cache);
+    const cacheKey = navigationCacheKey(url.toString(), partition);
+    const cachedResponse = await cache.match(cacheKey);
+    if (cachedResponse && isNavigationCacheFresh(cachedResponse)) return;
 
-    const networkResponse = await fetch(request);
-    if (networkResponse.ok && isHtmlResponse(networkResponse)) {
-        await cache.put(request, await createTimestampedResponse(networkResponse.clone()));
+    try {
+        const request = new Request(url.toString(), {
+            method: "GET",
+            credentials: "include",
+            mode: "same-origin",
+            headers: {
+                "Accept": "text/html",
+                "X-Zulors-Prefetch": "1",
+                "X-Zulors-Cache-Partition": partition,
+            },
+        });
+        const response = await fetch(request);
+        if (isCacheableNavigationResponse(response, partition)) {
+            await cache.put(cacheKey, await createTimestampedResponse(response.clone()));
+        }
+    } catch (error) {
+        return null;
     }
+}
+
+function fetchNavigation(request, partition) {
+    const headers = new Headers(request.headers);
+    headers.set("X-Zulors-Cache-Partition", partition);
+    headers.set("X-Zulors-Navigation", "1");
+    return fetch(new Request(request, { headers: headers, cache: "no-store" }));
+}
+
+async function clearPartitionCache(partition) {
+    const cache = await caches.open(NAVIGATION_CACHE);
+    const keys = await cache.keys();
+    return Promise.all(keys.filter(function (request) {
+        return new URL(request.url).searchParams.get("__zulors_partition") === partition;
+    }).map(function (request) { return cache.delete(request); }));
+}
+
+async function pruneNavigationCache(cache) {
+    if (navigationPrunePromise) return navigationPrunePromise;
+    if (Date.now() - lastNavigationPruneAt < 10000) return;
+
+    navigationPrunePromise = pruneNavigationCacheEntries(cache).finally(function () {
+        lastNavigationPruneAt = Date.now();
+        navigationPrunePromise = null;
+    });
+    return navigationPrunePromise;
+}
+
+async function pruneNavigationCacheEntries(cache) {
+    const keys = await cache.keys();
+    const entries = await Promise.all(keys.map(async function (request) {
+        const response = await cache.match(request);
+        const cachedAt = Number(response && response.headers.get("x-zulors-cache-time"));
+        return { request: request, cachedAt: Number.isFinite(cachedAt) ? cachedAt : 0 };
+    }));
+    const expired = entries.filter(function (entry) {
+        return !entry.cachedAt || Date.now() - entry.cachedAt >= NAVIGATION_TTL_MS;
+    });
+    await Promise.all(expired.map(function (entry) { return cache.delete(entry.request); }));
+
+    const live = entries.filter(function (entry) { return entry.cachedAt && Date.now() - entry.cachedAt < NAVIGATION_TTL_MS; })
+        .sort(function (a, b) { return b.cachedAt - a.cachedAt; });
+    const excess = live.slice(NAVIGATION_CACHE_MAX_ENTRIES);
+    await Promise.all(excess.map(function (entry) { return cache.delete(entry.request); }));
+}
+
+function navigationCacheKey(rawUrl, partition) {
+    const keyUrl = new URL(rawUrl, SAME_ORIGIN);
+    keyUrl.searchParams.set("__zulors_partition", partition);
+    return new Request(keyUrl.toString(), { method: "GET", credentials: "same-origin" });
 }
 
 function shouldCacheNavigation(url) {
-    return !EXCLUDED_NAVIGATION_PREFIXES.some(function (prefix) {
-        return url.pathname.startsWith(prefix);
-    });
+    return ALLOWED_NAVIGATION_PATTERNS.some(function (pattern) { return pattern.test(url.pathname); });
 }
 
-function isHtmlResponse(response) {
-    const contentType = response.headers.get("content-type") || "";
-    return contentType.indexOf("text/html") !== -1;
+function isCacheableStaticAsset(response) {
+    const cacheControl = (response.headers.get("cache-control") || "").toLowerCase();
+    return response.ok && !cacheControl.includes("no-store");
+}
+
+function isCacheableNavigationResponse(response, partition) {
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    return response.ok
+        && response.redirected !== true
+        && contentType.includes("text/html")
+        && response.headers.get("x-zulors-cacheable") === "session"
+        && response.headers.get("x-zulors-cache-partition") === partition;
 }
 
 function isNavigationCacheFresh(response) {
@@ -185,10 +261,5 @@ async function createTimestampedResponse(response) {
     const headers = new Headers(response.headers);
     headers.set("x-zulors-cache-time", Date.now().toString());
     const body = await response.blob();
-
-    return new Response(body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: headers,
-    });
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: headers });
 }

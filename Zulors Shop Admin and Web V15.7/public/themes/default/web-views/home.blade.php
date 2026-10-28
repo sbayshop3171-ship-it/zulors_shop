@@ -3,7 +3,7 @@
 @section('title', $web_config['meta_title'])
 
 @push('css_or_js')
-    <link rel="stylesheet" href="{{theme_asset(path: 'public/assets/front-end/css/home.css')}}"/>
+    <link rel="stylesheet" href="{{ theme_asset(path: 'public/assets/front-end/css/home.css') }}"/>
     <link rel="stylesheet" href="{{ theme_asset(path: 'public/assets/front-end/css/owl.carousel.min.css') }}">
     <link rel="stylesheet" href="{{ theme_asset(path: 'public/assets/front-end/css/owl.theme.default.min.css') }}">
     @php($heroBanner = $bannerTypeMainBanner[0] ?? null)
@@ -13,42 +13,46 @@
 @endpush
 
 @section('content')
+    @php
+        $isPrefetchRequest = request()->header('X-Zulors-Prefetch') === '1';
+        $orderSuccessIds = $isPrefetchRequest ? null : session('order_success_ids');
+        $isNewCustomerInSession = $isPrefetchRequest ? null : session('isNewCustomerInSession');
+        if (!$isPrefetchRequest) {
+            session()->forget('order_success_ids');
+            session()->forget('isNewCustomerInSession');
+        }
+        $decimalPointSettings = !empty(getWebConfig(name: 'decimal_point_settings')) ? getWebConfig(name: 'decimal_point_settings') : 0;
+    @endphp
 
-<?php
-    $orderSuccessIds = session('order_success_ids');
-    $isNewCustomerInSession = session('isNewCustomerInSession');
-    session()->forget('order_success_ids');
-    session()->forget('isNewCustomerInSession');
-?>
-@include("web-views.partials._order-success-modal",['orderSuccessIds' => $orderSuccessIds,'isNewCustomerInSession' => $isNewCustomerInSession])
+    @include('web-views.partials._order-success-modal', ['orderSuccessIds' => $orderSuccessIds, 'isNewCustomerInSession' => $isNewCustomerInSession])
 
-<div class="__inline-61 d-flex flex-column gap-20">
-        @php($decimalPointSettings = !empty(getWebConfig(name: 'decimal_point_settings')) ? getWebConfig(name: 'decimal_point_settings') : 0)
+    <div class="__inline-61 d-flex flex-column gap-20">
+        @include('web-views.partials._home-top-slider', ['bannerTypeMainBanner' => $bannerTypeMainBanner])
 
-        @include('web-views.partials._home-top-slider',['bannerTypeMainBanner'=>$bannerTypeMainBanner])
-        @if ($flashDeal['flashDeal'] && $flashDeal['flashDealProducts'] && count($flashDeal['flashDealProducts']) > 0)
-            @include('web-views.partials._flash-deal', ['decimal_point_settings'=>$decimalPointSettings])
+        @if($flashDeal['flashDeal'] && $flashDeal['flashDealProducts'] && count($flashDeal['flashDealProducts']) > 0)
+            @include('web-views.partials._flash-deal', ['decimal_point_settings' => $decimalPointSettings])
         @endif
 
-        @if ($featuredProductsList->count() > 0 )
+        @if($featuredProductsList->count() > 0)
             <div class="container">
                 <div class="__inline-62 section-card-margin">
-                    <h2 class="feature-product-title pt-3 web-text-primary mt-0 mb-0 letter-spacing-0">
-                        {{ translate('featured_products') }}
-                    </h2>
+                    <h2 class="feature-product-title pt-3 web-text-primary mt-0 mb-0 letter-spacing-0">{{ translate('featured_products') }}</h2>
                     <div class="text-end px-3 d-none d-md-block">
                         <a class="text-capitalize view-all-text web-text-primary" href="{{ route('featured-products') }}">
-                            {{ translate('view_all')}}
-                            <i class="czi-arrow-{{Session::get('direction') === 'rtl' ? 'left mr-1 ml-n1 mt-1' : 'right ml-1'}}"></i>
+                            {{ translate('view_all') }}
+                            <i class="czi-arrow-{{ Session::get('direction') === 'rtl' ? 'left mr-1 ml-n1 mt-1' : 'right ml-1' }}"></i>
                         </a>
                     </div>
                     <div class="feature-product">
                         <div class="carousel-wrap p-1">
-                            <div class="owl-carousel owl-theme" id="featured_products_list"
-                                 data-loop="{{ count($featuredProductsList) > 6 ? 'true' : 'false' }}">
-                                @foreach($featuredProductsList as $product)
+                            <div class="owl-carousel owl-theme" id="featured_products_list" data-loop="{{ count($featuredProductsList) > 6 ? 'true' : 'false' }}">
+                                @foreach($featuredProductsList as $key => $product)
                                     <div>
-                                        @include('web-views.partials._feature-product',['product'=>$product, 'decimal_point_settings'=>$decimalPointSettings])
+                                        @include('web-views.partials._feature-product', [
+                                            'product' => $product,
+                                            'decimal_point_settings' => $decimalPointSettings,
+                                            'prioritizeImage' => $key < 4,
+                                        ])
                                     </div>
                                 @endforeach
                             </div>
@@ -56,7 +60,7 @@
                         <div class="text-center pt-2 d-md-none">
                             <a class="text-capitalize view-all-text web-text-primary" href="{{ route('featured-products') }}">
                                 {{ translate('view_all') }}
-                                <i class="czi-arrow-{{Session::get('direction') === "rtl" ? 'left mr-1 ml-n1 mt-1' : 'right ml-1'}}"></i>
+                                <i class="czi-arrow-{{ Session::get('direction') === 'rtl' ? 'left mr-1 ml-n1 mt-1' : 'right ml-1' }}"></i>
                             </a>
                         </div>
                     </div>
@@ -66,162 +70,24 @@
 
         @include('web-views.partials._category-section-home')
 
-         @if(getFeaturedDealsProductList() && (count(getFeaturedDealsProductList()) > 0))
-            <section class="featured_deal pb-3">
-                <div class="container">
-                    <div class="__featured-deal-wrap bg--light px-0-mobile">
-                        <div class="d-flex flex-wrap justify-content-between align-items-center align-items-sm-start gap-8 mb-3">
-                            <div class="w-0 flex-grow-1">
-                                <span class="featured_deal_title font-bold text-dark">{{ translate('featured_deal')}}</span>
-                                <br>
-                                <span class="text-left">{{ translate('see_the_latest_deals_and_exciting_new_offers')}}!</span>
-                            </div>
-                            <div>
-                                <a class="text-capitalize view-all-text web-text-primary" href="{{ route('featured-deal-products') }}">
-                                    {{ translate('view_all')}}
-                                    <i class="czi-arrow-{{Session::get('direction') === 'rtl' ? 'left mr-1 ml-n1 mt-1' : 'right ml-1'}}"></i>
-                                </a>
-                            </div>
-                        </div>
-                        <div class="owl-carousel owl-theme new-arrivals-product">
-                            @foreach(getFeaturedDealsProductList() as $key=>$product)
-                                @include('web-views.partials._product-card-1',['product'=>$product, 'decimal_point_settings'=>$decimalPointSettings])
-                            @endforeach
-                        </div>
-                    </div>
-                </div>
-            </section>
-         @endif
+        <div class="home-section-placeholder home-section-placeholder--featured-deals" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'featured-deals']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
+        <div class="home-section-placeholder home-section-placeholder--clearance" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'clearance-sale']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
+        <div class="home-section-placeholder home-section-placeholder--banner" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'main-section-banner']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
 
-        @include('web-views.partials._clearance-sale-products', ['clearanceSaleProducts' => $clearanceSaleProducts])
-
-        @if (isset($bannerTypeMainSectionBanner))
-            <div class="container rtl pt-0 px-0 px-md-3">
-                <a href="{{$bannerTypeMainSectionBanner->url}}" target="_blank"
-                    class="cursor-pointer d-block">
-                    <img loading="lazy" class="d-block footer_banner_img __inline-63" alt=""
-                         src="{{ getStorageImages(path:$bannerTypeMainSectionBanner->photo_full_url, type: 'wide-banner') }}">
-                </a>
-            </div>
+        @if(getWebConfig(name: 'business_mode') === 'multi')
+            <div class="home-section-placeholder home-section-placeholder--sellers" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'top-sellers']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
         @endif
 
-        @php($businessMode = getWebConfig(name: 'business_mode'))
-        @if ($businessMode == 'multi' && count($topVendorsList) > 0)
-            @include('web-views.partials._top-sellers')
-        @endif
+        <div class="home-section-placeholder home-section-placeholder--deal" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'deal-of-the-day']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
+        <div class="home-section-placeholder home-section-placeholder--products" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'product-highlights']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
+        <div class="home-section-placeholder home-section-placeholder--brands" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'brands-and-banners']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
 
-        @include('web-views.partials._deal-of-the-day', ['decimal_point_settings' => $decimalPointSettings])
+        @foreach($homeCategories as $category)
+            <div class="home-section-placeholder home-section-placeholder--category-products" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'category-products', 'id' => $category->id]) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
+        @endforeach
 
-        <section class="new-arrival-section">
-
-            @if ($newArrivalProducts->count() >0 )
-                <div class="container rtl">
-                    <div class="section-header">
-                        <h2 class="arrival-title d-block mb-1">
-                            <div class="text-capitalize">
-                                {{ translate('new_arrivals')}}
-                            </div>
-                        </h2>
-                    </div>
-                </div>
-                <div class="container rtl mb-3 overflow-hidden">
-                    <div class="py-2">
-                        <div class="new_arrival_product">
-                            <div class="carousel-wrap">
-                                <div class="owl-carousel owl-theme new-arrivals-product">
-                                    @foreach($newArrivalProducts as $key=> $product)
-                                        @include('web-views.partials._product-card-2',['product'=>$product,'decimal_point_settings'=>$decimalPointSettings])
-                                    @endforeach
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            @endif
-
-            <div class="container rtl px-0 px-md-3">
-                <div class="row g-3 mx-max-md-0">
-
-                    @if ($bestSellProduct->count() >0)
-                        @include('web-views.partials._best-selling')
-                    @endif
-
-                    @if ($topRatedProducts->count() >0)
-                        @include('web-views.partials._top-rated')
-                    @endif
-                </div>
-            </div>
-        </section>
-
-
-        @if (count($bannerTypeFooterBanner) > 1)
-            <div class="container rtl">
-                <div class="promotional-banner-slider owl-carousel owl-theme">
-                    @foreach($bannerTypeFooterBanner as $banner)
-                        <a href="{{ $banner['url'] }}" class="d-block" target="_blank">
-                            <img loading="lazy" class="footer_banner_img __inline-63"  alt="" src="{{ getStorageImages(path:$banner->photo_full_url, type: 'banner') }}">
-                        </a>
-                    @endforeach
-                </div>
-            </div>
-        @elseif (count($bannerTypeFooterBanner) > 0 && count($bannerTypeFooterBanner) == 1)
-            <div class="container rtl">
-                <div class="row">
-                    @foreach($bannerTypeFooterBanner as $banner)
-                        <div class="col-md-6">
-                            <a href="{{ $banner['url'] }}" class="d-block" target="_blank">
-                                <img loading="lazy" class="footer_banner_img __inline-63"  alt="" src="{{ getStorageImages(path:$banner->photo_full_url, type: 'banner') }}">
-                            </a>
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        @endif
-
-        @if($web_config['brand_setting'] && $brands->count() > 0)
-            <section class="container rtl">
-
-                <div class="section-header align-items-center mb-1">
-                    <h2 class="text-black font-bold __text-22px mb-0">
-                        <span> {{translate('brands')}}</span>
-                    </h2>
-                    <div class="__mr-2px">
-                        <a class="text-capitalize view-all-text web-text-primary" href="{{route('brands')}}">
-                            {{ translate('view_all')}}
-                            <i class="czi-arrow-{{Session::get('direction') === 'rtl' ? 'left mr-1 ml-n1 mt-1 float-left' : 'right ml-1 mr-n1'}}"></i>
-                        </a>
-                    </div>
-                </div>
-
-                <div class="mt-sm-3 mb-0 brand-slider">
-                    <div class="owl-carousel owl-theme p-2 brands-slider">
-                        @php($brandCount=0)
-                        @foreach($brands as $brand)
-                            @if($brandCount < 15)
-                                <div class="text-center">
-                                    <a href="{{ route('brand-products', ['slug' => $brand['slug']]) }}"
-                                       class="__brand-item">
-                                        <img loading="lazy" alt="{{ $brand->image_alt_text }}"
-                                             src="{{ getStorageImages(path: $brand->image_full_url, type: 'brand') }}">
-                                    </a>
-                                </div>
-                            @endif
-                            @php($brandCount++)
-                        @endforeach
-                    </div>
-                </div>
-            </section>
-        @endif
-
-        @if ($homeCategories->count() > 0)
-            @foreach($homeCategories as $category)
-                @include('web-views.partials._category-wise-product', ['decimal_point_settings'=>$decimalPointSettings])
-            @endforeach
-        @endif
-
-        @php($companyReliability = getWebConfig(name: 'company_reliability'))
-        @if($companyReliability != null)
-            @include('web-views.partials._company-reliability')
+        @if(getWebConfig(name: 'company_reliability'))
+            <div class="home-section-placeholder home-section-placeholder--reliability" data-home-section data-home-section-url="{{ route('home-section', ['section' => 'company-reliability']) }}" role="status" aria-busy="true" aria-label="{{ translate('loading') }}"></div>
         @endif
     </div>
 
@@ -233,46 +99,36 @@
         <script>
             document.addEventListener('DOMContentLoaded', function () {
                 var modalEl = document.getElementById('order_successfully');
-                var orderModal = new bootstrap.Modal(modalEl, {
-                    backdrop: 'static',
-                    keyboard: false
-                });
+                var orderModal = new bootstrap.Modal(modalEl, { backdrop: 'static', keyboard: false });
                 orderModal.show();
 
-
-                document.querySelectorAll('.copy-order-id').forEach(function(copyBtn) {
-                    copyBtn.addEventListener('click', function() {
-                        let orderTextEl = null;
-                        orderTextEl = this.closest('tr')?.querySelector('.order-id-text');
-                        if (!orderTextEl) {
-                            orderTextEl = this.parentElement.querySelector('.order-id-text');
-                        }
-                        const orderText = orderTextEl?.textContent.trim();
-                        if (orderText) {
-                            navigator.clipboard.writeText(orderText).then(() => {
-                                toastr.success('Order ID copied successfully!');
-                            }).catch(err => {
-                                console.warn('Clipboard error:', err);
-                                toastr.warning('Unable to copy. Clipboard requires HTTPS or localhost.');
-                            });
-                        }
+                document.querySelectorAll('.copy-order-id').forEach(function (copyBtn) {
+                    copyBtn.addEventListener('click', function () {
+                        var orderTextEl = this.closest('tr')?.querySelector('.order-id-text') || this.parentElement.querySelector('.order-id-text');
+                        var orderText = orderTextEl?.textContent.trim();
+                        if (!orderText) return;
+                        navigator.clipboard.writeText(orderText).then(function () {
+                            toastr.success('Order ID copied successfully!');
+                        }).catch(function () {
+                            toastr.warning('Unable to copy. Clipboard requires HTTPS or localhost.');
+                        });
                     });
                 });
-                document.getElementById('modal-close-btn').addEventListener('click', function() {
-                    setTimeout(() => { orderModal.hide(); }, 600);
+                document.getElementById('modal-close-btn')?.addEventListener('click', function () {
+                    setTimeout(function () { orderModal.hide(); }, 600);
                 });
             });
         </script>
     @endif
 
-    @if(Request::is('/') && \Illuminate\Support\Facades\Cookie::has('popup_banner') == false && empty($orderSuccessIds))
+    @if(!$isPrefetchRequest && Request::is('/') && \Illuminate\Support\Facades\Cookie::has('popup_banner') == false && empty($orderSuccessIds))
         <script>
-            $(document).ready(function () {
-                $('#popup-modal').modal('show');
-            });
+            $(document).ready(function () { $('#popup-modal').modal('show'); });
         </script>
         @php(\Illuminate\Support\Facades\Cookie::queue('popup_banner', 'off', 1))
     @endif
-    <script src="{{theme_asset(path: 'public/assets/front-end/js/owl.carousel.min.js')}}"></script>
+
+    <script src="{{ theme_asset(path: 'public/assets/front-end/js/owl.carousel.min.js') }}"></script>
     <script src="{{ theme_asset(path: 'public/assets/front-end/js/home.js') }}?v={{ file_exists(public_path('assets/front-end/js/home.js')) ? filemtime(public_path('assets/front-end/js/home.js')) : time() }}"></script>
+    <script src="{{ theme_asset(path: 'public/assets/front-end/js/home-sections.js') }}?v={{ file_exists(public_path('assets/front-end/js/home-sections.js')) ? filemtime(public_path('assets/front-end/js/home-sections.js')) : time() }}"></script>
 @endpush

@@ -53,7 +53,9 @@
                                                 {{ getProductPriceByType(product: $product, type: 'discounted_unit_price', result: 'string') }}
                                             </span>
                                         </h4>
-                                        @php($overallRating = getOverallRating($product['reviews']))
+                                        @php($overallRating = isset($product->reviews_avg_rating)
+                                            ? [$product->reviews_avg_rating, $product->reviews_count ?? 0]
+                                            : getOverallRating($product['reviews']))
                                         @if($overallRating[0] != 0 )
                                             <div class="rating-show">
                                                 <span class="d-inline-block font-size-sm text-body">
@@ -67,7 +69,7 @@
                                                         @endif
                                                     @endfor
                                                     <label class="badge-style">
-                                                        ( {{ count($product['reviews']) }} )
+                                                        ( {{ $overallRating[1] }} )
                                                     </label>
                                                 </span>
                                             </div>

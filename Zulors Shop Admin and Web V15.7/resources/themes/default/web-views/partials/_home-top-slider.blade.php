@@ -10,7 +10,7 @@
                                 <li class="{{ $category->childes->count() > 0 ? 'has-sub-item' : '' }}">
                                     <a href="{{ route('category-products', ['slug' => $category['slug']]) }}">
                                         <span class="d-flex gap-10px justify-content-start align-items-center">
-                                            <img loading="lazy" decoding="async" class="aspect-1 rounded-circle" width="20" src="{{ getStorageImages(path: $category?->icon_full_url, type: 'category') }}" alt="{{ $category['name'] }}">
+                                            <img loading="lazy" decoding="async" class="aspect-1 rounded-circle" width="20" height="20" src="{{ getStorageImages(path: $category?->icon_full_url, type: 'category') }}" alt="{{ $category['name'] }}">
                                             <span class="line--limit-2">{{ $category->name }}</span>
                                         </span>
                                         @if ($category->childes->count() > 0)
@@ -53,7 +53,7 @@
                             @foreach($bannerTypeMainBanner as $key=>$banner)
                                 <a href="{{$banner['url']}}" class="d-block" target="_blank"
                                     @if (!$loop->first) style="display:none!important" @endif>
-                                <img class="w-100 __slide-img __slide-img-170" alt=""
+                                <img class="w-100 __slide-img __slide-img-170" width="1440" height="420" alt=""
                                     loading="{{ $loop->first ? 'eager' : 'lazy' }}"
                                     fetchpriority="{{ $loop->first ? 'high' : 'auto' }}"
                                     decoding="async"

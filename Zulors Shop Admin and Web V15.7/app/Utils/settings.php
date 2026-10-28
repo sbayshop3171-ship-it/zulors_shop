@@ -359,12 +359,15 @@ if (!function_exists('cacheRemoveByType')) {
             Cache::forget(FIND_WHAT_YOU_NEED_CATEGORIES_LIST);
             Cache::forget(CACHE_HOME_CATEGORIES_LIST);
             Cache::forget(CACHE_HOME_CATEGORIES_API_LIST);
+            cacheGroupRemoveByType(key: CACHE_FOR_HOME_LIGHT_CATEGORY_KEYS);
+            cacheGroupRemoveByType(key: CACHE_FOR_HOME_CATEGORY_PRODUCT_KEYS);
 
             foreach (Cache::get(CACHE_CONTAINER_FOR_LANGUAGE_WISE_CACHE_KEYS, []) as $key) {
                 Cache::forget($key);
             }
         } else if ($type == 'flash_deals') {
             cacheGroupRemoveByType(key: CACHE_FLASH_DEAL_KEYS);
+            cacheGroupRemoveByType(key: CACHE_FOR_FEATURED_DEAL_PRODUCTS_LIST);
         } else if ($type == 'help_topics') {
             Cache::forget(CACHE_HELP_TOPICS_TABLE);
         } else if ($type == 'login_setups') {

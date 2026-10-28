@@ -369,7 +369,7 @@ trait CacheManagerTrait
         return Cache::remember(CACHE_FOR_RANDOM_SINGLE_PRODUCT, now()->addMinutes(10), function () {
             return $this->product->active()->with(['clearanceSale' =>function ($query) {
                 return $query->active();
-            }])->where('discount', '>', 0)->inRandomOrder()->first();
+            }])->withCount('reviews')->withAvg('reviews', 'rating')->where('discount', '>', 0)->inRandomOrder()->first();
         });
     }
 
@@ -390,6 +390,8 @@ trait CacheManagerTrait
             return Product::active()->with(['seller.shop', 'clearanceSale' =>function ($query) {
                 return $query->active();
             }])
+                ->withCount('reviews')
+                ->withAvg('reviews', 'rating')
                 ->whereHas('reviews', function ($query) {
                     return $query->select('product_id', DB::raw('AVG(rating) as average_rating'))->groupBy('product_id');
                 })
@@ -402,9 +404,11 @@ trait CacheManagerTrait
     {
         return Cache::remember(CACHE_FOR_HOME_PAGE_BEST_SELL_PRODUCT_LIST, CACHE_FOR_3_HOURS, function () {
             return Product::active()
-                ->with(['reviews', 'seller.shop', 'clearanceSale' => function ($query) {
+                ->with(['seller.shop', 'clearanceSale' => function ($query) {
                     return $query->active();
                 }])
+                ->withCount('reviews')
+                ->withAvg('reviews', 'rating')
                 ->whereHas('orderDetails', function ($query) {
                     $query->select('product_id', DB::raw('COUNT(product_id) as count'))
                         ->groupBy('product_id');
@@ -419,7 +423,7 @@ trait CacheManagerTrait
         return Cache::remember(CACHE_FOR_HOME_PAGE_LATEST_PRODUCT_LIST, CACHE_FOR_3_HOURS, function () {
             $latestProductsList = Product::active()->with(['seller.shop', 'flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
                 return $query->active();
-            }])->orderBy('id', 'desc')->take(10)->get();
+            }])->withCount('reviews')->withAvg('reviews', 'rating')->orderBy('id', 'desc')->take(10)->get();
             return $this->getUpdateLatestProductWithFlashDeal(latestProducts: $latestProductsList);
         });
     }

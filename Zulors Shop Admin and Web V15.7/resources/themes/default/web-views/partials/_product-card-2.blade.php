@@ -1,5 +1,7 @@
 @if(isset($product))
-    @php($overallRating = getOverallRating($product?->reviews))
+    @php($overallRating = isset($product->reviews_avg_rating)
+        ? [$product->reviews_avg_rating, $product->reviews_count ?? 0]
+        : getOverallRating($product?->reviews))
     <div class="flash_deal_product get-view-by-onclick" data-link="{{ route('product',$product->slug) }}">
         @if(getProductPriceByType(product: $product, type: 'discount', result: 'value') > 0)
             <span class="for-discount-value p-1 pl-2 pr-2 font-bold fs-13">
@@ -11,7 +13,7 @@
         <div class="d-flex">
             <div class="d-flex align-items-center justify-content-center p-12px">
                 <div class="flash-deals-background-image">
-                    <img loading="lazy" class="__img-125px" alt="" src="{{ getStorageImages(path: $product->thumbnail_full_url, type: 'product') }}">
+                    <img loading="lazy" decoding="async" width="125" height="125" class="__img-125px" alt="" src="{{ getStorageImages(path: $product->thumbnail_full_url, type: 'product') }}">
                 </div>
             </div>
             <div class="flash_deal_product_details pl-3 pr-3 pr-1 d-flex mt-3">
@@ -44,7 +46,7 @@
                                 @endif
                             @endfor
                             <label class="badge-style2">
-                                ( {{ count($product->reviews) }} )
+                                ( {{ $overallRating[1] }} )
                             </label>
                         </div>
                     @endif

@@ -53,7 +53,9 @@
                                                 {{ getProductPriceByType(product: $bestSellItem, type: 'discounted_unit_price', result: 'string') }}
                                             </span>
                                         </h4>
-                                        @php($overallRating = getOverallRating($bestSellItem['reviews']))
+                                        @php($overallRating = isset($bestSellItem->reviews_avg_rating)
+                                            ? [$bestSellItem->reviews_avg_rating, $bestSellItem->reviews_count ?? 0]
+                                            : getOverallRating($bestSellItem['reviews']))
                                         @if($overallRating[0] != 0 )
                                             <div class="rating-show">
                                             <span class="d-inline-block font-size-sm text-body">
@@ -66,7 +68,7 @@
                                                         <i class="tio-star-outlined text-warning"></i>
                                                     @endif
                                                 @endfor
-                                                <label class="badge-style">( {{ count($bestSellItem['reviews']) }} )</label>
+                                                <label class="badge-style">( {{ $overallRating[1] }} )</label>
                                             </span>
                                             </div>
                                         @endif

@@ -26,7 +26,16 @@ class ImageManager
                 if (in_array(request()->ip(), ['127.0.0.1', '::1']) && !(imagetypes() & IMG_WEBP) || env('APP_DEBUG') && !(imagetypes() & IMG_WEBP)) {
                     $format = 'png';
                 }
-                $imageWebp = Image::make($image)->encode($format, 85);
+                $processedImage = Image::make($image);
+                $quality = 85;
+                if (trim($dir, '/') === 'product/thumbnail') {
+                    $processedImage->resize(360, 360, function ($constraint) {
+                        $constraint->aspectRatio();
+                        $constraint->upsize();
+                    });
+                    $quality = 82;
+                }
+                $imageWebp = $processedImage->encode($format, $quality);
                 $imageName = Carbon::now()->toDateString() . "-" . uniqid() . "." . $format;
                 Storage::disk($storage)->put($dir . $imageName, $imageWebp);
                 $imageWebp->destroy();

@@ -2566,3 +2566,27 @@ body {
     color: var(--white-clr) !important;
     filter: brightness(1) !important;
 }
+
+#zulors-navigation-progress {
+    position: fixed;
+    z-index: 2147483647;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 3px;
+    opacity: 0;
+    background: var(--web-primary, #1f80f0);
+    box-shadow: 0 0 8px rgba(var(--bs-base-rgb, 31, 128, 240), .45);
+    transition: width 180ms ease-out, opacity 120ms ease-out;
+    pointer-events: none;
+}
+
+#zulors-navigation-progress.is-visible {
+    width: 72%;
+    opacity: 1;
+}
+
+#zulors-navigation-progress.is-complete {
+    width: 100%;
+    opacity: 0;
+}

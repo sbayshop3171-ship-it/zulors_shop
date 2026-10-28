@@ -55,50 +55,170 @@ class HomeController extends Controller
 
     public function default_theme(): View
     {
-        $brands = $this->cachePriorityWiseBrandList();
-        $homeCategories = $this->cacheHomeCategoriesList();
-        $topRatedProducts = $this->cacheTopRatedProductList();
-        $latestProductsList = $this->cacheHomePageLatestProductList()->take(8);
-        $bestSellProduct = $this->cacheBestSellProductList();
-        $recommendedProduct = $this->cacheHomePageRandomSingleProductItem();
+        // Keep the first response focused on the sections users see first.
+        // Lower-page product collections are loaded by homeSection() as they
+        // approach the viewport.
+        $homeCategories = $this->cacheHomeCategorySummaries();
+        $categories = $this->cacheHomeNavigationCategories();
         $bannerTypeMainBanner = $this->cacheBannerForTypeMainBanner();
-        $bannerTypeMainSectionBanner = $this->cacheBannerTable(bannerType: 'Main Section Banner');
-        $topVendorsList = ProductManager::getPriorityWiseTopVendorQuery($this->cacheHomePageTopVendorsList());
-        $bannerTypeFooterBanner = $this->cacheBannerTable(bannerType: 'Footer Banner', dataLimit: 10);
-        $clearanceSaleProducts = $this->cacheHomePageClearanceSaleProducts();
-
-        $categories = CategoryManager::getCategoriesWithCountingAndPriorityWiseSorting();
         $userId = Auth::guard('customer')->user() ? Auth::guard('customer')->id() : 0;
         $flashDeal = ProductManager::getPriorityWiseFlashDealsProductsQuery(userId: $userId);
-        $current_date = date('Y-m-d H:i:s');
-
-        $bestSellProduct = $bestSellProduct->count() == 0 ? $latestProductsList : $bestSellProduct;
-        $topRatedProducts = $topRatedProducts->count() == 0 ? $bestSellProduct : $topRatedProducts;
-
         $featuredProductsList = ProductManager::getPriorityWiseFeaturedProductsQuery(query: $this->product->active()->with(['clearanceSale' => function ($query) {
             return $query->active();
         }]), dataLimit: 12);
-        $newArrivalProducts = ProductManager::getPriorityWiseNewArrivalProductsQuery(query: $this->product->active()->with(['clearanceSale' => function ($query) {
-            return $query->active();
-        }]), dataLimit: 8);
 
-        $dealOfTheDay = DealOfTheDay::with(['product' => function ($query) {
-            return $query->active()->with(['clearanceSale' => function ($query) {
-                return $query->active();
-            }]);
-        }])
-            ->join('products', 'products.id', '=', 'deal_of_the_days.product_id')
-            ->select('deal_of_the_days.*', 'products.unit_price')
-            ->where('products.status', 1)
-            ->where('deal_of_the_days.status', 1)
-            ->first();
         return view(VIEW_FILE_NAMES['home'],
-            compact(
-                'flashDeal', 'featuredProductsList', 'topRatedProducts', 'bestSellProduct', 'latestProductsList', 'categories', 'brands',
-                'dealOfTheDay', 'topVendorsList', 'homeCategories', 'bannerTypeMainBanner', 'bannerTypeMainSectionBanner',
-                'current_date', 'recommendedProduct', 'bannerTypeFooterBanner', 'newArrivalProducts', 'clearanceSaleProducts'
-            )
+            compact('flashDeal', 'featuredProductsList', 'categories', 'homeCategories', 'bannerTypeMainBanner')
         );
+    }
+
+    /**
+     * Return a below-the-fold homepage section. Only allowlisted sections are
+     * rendered, and fragment responses are never stored by browser caches.
+     */
+    public function homeSection(string $section, ?int $id = null)
+    {
+        abort_unless(theme_root_path() === 'default', 404);
+
+        $data = [
+            'section' => $section,
+            'decimalPointSettings' => !empty(getWebConfig(name: 'decimal_point_settings'))
+                ? getWebConfig(name: 'decimal_point_settings')
+                : 0,
+        ];
+
+        switch ($section) {
+            case 'featured-deals':
+                $data['featuredDealProducts'] = getFeaturedDealsProductList();
+                break;
+            case 'clearance-sale':
+                $data['clearanceSaleProducts'] = $this->cacheHomePageClearanceSaleProducts();
+                break;
+            case 'main-section-banner':
+                $data['bannerTypeMainSectionBanner'] = $this->cacheBannerTable(bannerType: 'Main Section Banner');
+                break;
+            case 'top-sellers':
+                $data['topVendorsList'] = ProductManager::getPriorityWiseTopVendorQuery($this->cacheHomePageTopVendorsList());
+                break;
+            case 'deal-of-the-day':
+                $data['dealOfTheDay'] = DealOfTheDay::with(['product' => function ($query) {
+                    return $query->active()->with(['clearanceSale' => function ($query) {
+                        return $query->active();
+                    }])->withCount('reviews')->withAvg('reviews', 'rating');
+                }])
+                    ->join('products', 'products.id', '=', 'deal_of_the_days.product_id')
+                    ->select('deal_of_the_days.*', 'products.unit_price')
+                    ->where('products.status', 1)
+                    ->where('deal_of_the_days.status', 1)
+                    ->first();
+                $data['recommendedProduct'] = $this->cacheHomePageRandomSingleProductItem();
+                break;
+            case 'product-highlights':
+                $latestProductsList = $this->cacheHomePageLatestProductList()->take(8);
+                $data['bestSellProduct'] = $this->cacheBestSellProductList();
+                $data['topRatedProducts'] = $this->cacheTopRatedProductList();
+                $data['bestSellProduct'] = $data['bestSellProduct']->count() === 0
+                    ? $latestProductsList
+                    : $data['bestSellProduct'];
+                $data['topRatedProducts'] = $data['topRatedProducts']->count() === 0
+                    ? $data['bestSellProduct']
+                    : $data['topRatedProducts'];
+                $data['newArrivalProducts'] = ProductManager::getPriorityWiseNewArrivalProductsQuery(
+                    query: $this->product->active()->with(['clearanceSale' => function ($query) {
+                        return $query->active();
+                    }]),
+                    dataLimit: 8
+                );
+                break;
+            case 'brands-and-banners':
+                $data['brands'] = $this->cachePriorityWiseBrandList();
+                $data['bannerTypeFooterBanner'] = $this->cacheBannerTable(bannerType: 'Footer Banner', dataLimit: 10);
+                $data['brandSetting'] = getWebConfig(name: 'brand_setting');
+                break;
+            case 'category-products':
+                $category = $this->cacheHomeCategorySummaries()->firstWhere('id', $id);
+                abort_unless($category, 404);
+
+                $category->setAttribute('products', $this->cacheHomeCategoryProducts($category));
+                $data['category'] = $category;
+                break;
+            case 'company-reliability':
+                $data['companyReliability'] = getWebConfig(name: 'company_reliability');
+                break;
+            default:
+                abort(404);
+        }
+
+        return response()
+            ->view('web-views.partials.home-section-fragment', $data)
+            ->header('Cache-Control', 'private, no-store, max-age=0');
+    }
+
+    private function cacheHomeNavigationCategories()
+    {
+        $cacheKey = CACHE_FOR_HOME_NAVIGATION_CATEGORIES . '_' . (getDefaultLanguage() ?? 'en');
+        $this->registerHomeCacheKey(CACHE_FOR_HOME_LIGHT_CATEGORY_KEYS, $cacheKey);
+
+        return Cache::remember($cacheKey, CACHE_FOR_3_HOURS, function () {
+            $categoryFields = ['id', 'name', 'slug', 'position', 'parent_id', 'priority', 'icon', 'icon_storage_type'];
+            $categories = Category::query()
+                ->select($categoryFields)
+                ->where('position', 0)
+                ->withCount(['product' => function ($query) {
+                    return $query->active();
+                }])
+                ->with(['childes' => function ($query) use ($categoryFields) {
+                    $query->select($categoryFields)->where('position', 1)
+                        ->with(['childes' => function ($query) use ($categoryFields) {
+                            $query->select($categoryFields)->where('position', 2);
+                        }]);
+                }])
+                ->get();
+
+            return CategoryManager::getPriorityWiseCategorySortQuery($categories)->values();
+        });
+    }
+
+    private function cacheHomeCategorySummaries()
+    {
+        $cacheKey = CACHE_FOR_HOME_CATEGORY_SUMMARIES . '_' . (getDefaultLanguage() ?? 'en');
+        $this->registerHomeCacheKey(CACHE_FOR_HOME_LIGHT_CATEGORY_KEYS, $cacheKey);
+
+        return Cache::remember($cacheKey, CACHE_FOR_3_HOURS, function () {
+            return Category::query()
+                ->select(['id', 'name', 'slug', 'position', 'parent_id', 'priority', 'icon', 'icon_storage_type', 'home_status'])
+                ->where('home_status', true)
+                ->whereHas('product', function ($query) {
+                    return $query->active();
+                })
+                ->orderBy('id')
+                ->get();
+        });
+    }
+
+    private function cacheHomeCategoryProducts(Category $category)
+    {
+        $cacheKey = CACHE_FOR_HOME_CATEGORY_PRODUCTS . '_' . (getDefaultLanguage() ?? 'en') . '_' . $category->id;
+        $this->registerHomeCacheKey(CACHE_FOR_HOME_CATEGORY_PRODUCT_KEYS, $cacheKey);
+
+        return Cache::remember($cacheKey, now()->addMinutes(10), function () use ($category) {
+            $products = Product::active()
+                ->with(['flashDealProducts.flashDeal', 'clearanceSale' => function ($query) {
+                    return $query->active();
+                }])
+                ->where('category_id', $category->id);
+
+            return ProductManager::getPriorityWiseCategoryWiseProductsQuery(query: $products, dataLimit: 12);
+        });
+    }
+
+    private function registerHomeCacheKey(string $groupKey, string $cacheKey): void
+    {
+        $keys = Cache::get($groupKey, []);
+        if (!in_array($cacheKey, $keys, true)) {
+            $keys[] = $cacheKey;
+            Cache::put($groupKey, $keys, CACHE_FOR_3_HOURS);
+        }
     }
 
     public function theme_aster(): View

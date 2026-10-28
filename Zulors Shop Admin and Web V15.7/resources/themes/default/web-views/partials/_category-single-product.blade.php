@@ -1,5 +1,7 @@
 @if(isset($product))
-    @php($overallRating = getOverallRating($product?->reviews))
+    @php($overallRating = isset($product->reviews_avg_rating)
+        ? [$product->reviews_avg_rating, $product->reviews_count ?? 0]
+        : getOverallRating($product?->reviews))
     <div class="product-single-hover style--category shadow-none rounded">
         <div class="overflow-hidden position-relative">
             <div class=" inline_product clickable d-flex justify-content-center">
@@ -18,7 +20,7 @@
                 @endif
                 <div class="d-flex pb-0">
                     <a href="{{route('product',$product->slug)}}" class="d-block rounded">
-                        <img alt="" class="border border-black-50"
+                        <img loading="{{ !empty($prioritizeImage) ? 'eager' : 'lazy' }}" fetchpriority="{{ !empty($prioritizeImage) ? 'high' : 'auto' }}" decoding="async" width="180" height="180" alt="" class="border border-black-50"
                              src="{{ getStorageImages(path: $product->thumbnail_full_url, type: 'product') }}">
                     </a>
                 </div>
@@ -56,7 +58,7 @@
                                     <i class="tio-star-outlined text-warning"></i>
                                 @endif
                             @endfor
-                            <label class="badge-style">( {{ count($product->reviews) }} )</label>
+                            <label class="badge-style">( {{ $overallRating[1] }} )</label>
                         </span>
                     </div>
                 @endif

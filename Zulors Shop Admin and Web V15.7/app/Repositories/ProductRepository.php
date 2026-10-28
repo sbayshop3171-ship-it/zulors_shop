@@ -125,6 +125,10 @@ class ProductRepository implements ProductRepositoryInterface
             ->when(isset($withCount['orderDetails']), function ($query) use ($withCount) {
                 return $query->withCount($withCount['orderDetails']);
             })
+            ->when(isset($withCount['reviews']), function ($query) use ($withCount) {
+                return $query->withCount($withCount['reviews'])
+                    ->withAvg($withCount['reviews'], 'rating');
+            })
             ->when(isset($withCount['wishList']), function ($query) use ($withCount) {
                 return $query->withCount($withCount['wishList']);
             })

@@ -62,8 +62,9 @@ class ProductDetailsController extends Controller
     {
         $product = $this->productRepo->getWebFirstWhereActive(
             params: ['slug' => $slug, 'customer_id' => Auth::guard('customer')->user()->id ?? 0],
-            relations: ['seoInfo', 'digitalVariation' => 'digitalVariation', 'reviews', 'seller.shop', 'digitalProductAuthors.author',
-                'digitalProductPublishingHouse.publishingHouse', 'clearanceSale' => 'clearanceSale']
+            relations: ['seoInfo', 'digitalVariation' => 'digitalVariation', 'seller.shop', 'digitalProductAuthors.author',
+                'digitalProductPublishingHouse.publishingHouse', 'clearanceSale' => 'clearanceSale'],
+            withCount: ['reviews' => 'reviews']
         );
 
         if ($product) {
@@ -76,7 +77,10 @@ class ProductDetailsController extends Controller
             $productAuthorsInfo = $this->productService->getProductAuthorsInfo(product: $product);
             $productPublishingHouseInfo = $this->productService->getProductPublishingHouseInfo(product: $product);
 
-            $overallRating = getOverallRating(reviews: $product?->reviews);
+            $overallRating = [
+                $product->reviews_avg_rating !== null ? number_format($product->reviews_avg_rating, 2) : 0,
+                (int) $product->reviews_count,
+            ];
             $wishlistStatus = $this->wishlistRepo->getListWhereCount(filters: ['product_id' => $product['id'], 'customer_id' => auth('customer')->id()]);
             $productReviews = $this->reviewRepo->getListWhere(
                 orderBy: ['id' => 'desc'],
@@ -91,7 +95,12 @@ class ProductDetailsController extends Controller
             }
             $firstVariationQuantity = $product['product_type'] == 'physical' ? $firstVariationQuantity : 999;
 
-            $rating = getRating(reviews: $product->reviews);
+            $ratingCounts = $product->reviews()
+                ->selectRaw('rating, COUNT(*) as aggregate')
+                ->groupBy('rating')
+                ->pluck('aggregate', 'rating');
+            $rating = [5, 4, 3, 2, 1];
+            $rating = array_map(static fn (int $score): int => (int) ($ratingCounts[$score] ?? 0), $rating);
             $decimalPointSettings = getWebConfig('decimal_point_settings');
             $moreProductFromSeller = $this->productRepo->getWebListWithScope(
                 orderBy: ['id' => 'desc'],
@@ -102,24 +111,14 @@ class ProductDetailsController extends Controller
                 offset: 1
             );
 
-            if ($product['added_by'] == 'seller') {
-                $productsForReview = $this->productRepo->getWebListWithScope(
-                    scope: 'active',
-                    filters: ['added_by' => $product['added_by'], 'seller_id' => $product['user_id']],
-                    withCount: ['reviews' => 'reviews']
-                );
-            } else {
-                $productsForReview = $this->productRepo->getWebListWithScope(
-                    scope: 'active',
-                    filters: ['added_by' => 'in_house', 'seller_id' => $product['user_id']],
-                    withCount: ['reviews' => 'reviews']
-                );
-            }
-
-            $totalReviews = 0;
-            foreach ($productsForReview as $item) {
-                $totalReviews += $item->reviews_count;
-            }
+            $reviewProductAddedBy = $product['added_by'] === 'admin' ? 'admin' : 'seller';
+            $reviewProductFilters = ['added_by' => $reviewProductAddedBy, 'user_id' => $product['user_id']];
+            $productsForReviewCount = Product::active()->where($reviewProductFilters)->count();
+            $totalReviews = Review::active()
+                ->whereHas('product', function ($query) use ($reviewProductFilters) {
+                    return $query->active()->where($reviewProductFilters);
+                })
+                ->count();
             $countOrder = $this->orderDetailRepo->getListWhereCount(filters: ['product_id' => $product['id']]);
             $countWishlist = $this->wishlistRepo->getListWhereCount(filters: ['product_id' => $product['id']]);
             $relatedProducts = $this->productRepo->getWebListWithScope(
@@ -136,7 +135,7 @@ class ProductDetailsController extends Controller
             $previewFileInfo = getFileInfoFromURL(url: $product?->preview_file_full_url['path']);
 
             return view(VIEW_FILE_NAMES['products_details'], compact('product', 'initialProductConfig', 'initialProductQuantity','initialProductPrice','countWishlist', 'countOrder', 'relatedProducts',
-                'dealOfTheDay', 'currentDate', 'overallRating', 'wishlistStatus', 'productReviews', 'rating', 'totalReviews', 'productsForReview', 'moreProductFromSeller', 'decimalPointSettings', 'previewFileInfo', 'productAuthorsInfo', 'productPublishingHouseInfo', 'firstVariationQuantity', 'productDetailsMeta'));
+                'dealOfTheDay', 'currentDate', 'overallRating', 'wishlistStatus', 'productReviews', 'rating', 'totalReviews', 'productsForReviewCount', 'moreProductFromSeller', 'decimalPointSettings', 'previewFileInfo', 'productAuthorsInfo', 'productPublishingHouseInfo', 'firstVariationQuantity', 'productDetailsMeta'));
         }
 
         Toastr::error(translate('not_found'));

@@ -22,7 +22,7 @@
                                         <div class="text-center __m-5px __cate-item">
                                             <a href="{{ route('category-products', ['slug' => $category['slug']]) }}" class="d-flex flex-column align-items-center">
                                                 <div class="__img">
-                                                    <img loading="lazy" alt="{{ $category->name }}"
+                                                    <img loading="lazy" decoding="async" width="90" height="90" alt="{{ $category->name }}"
                                                          src="{{ getStorageImages(path:$category->icon_full_url, type: 'category') }}">
                                                 </div>
                                                 <h3 class="text-center fs-13 font-semibold mt-2 letter-spacing-0">{{Str::limit($category->name, 15)}}</h3>
@@ -39,7 +39,7 @@
                                         <div class="text-center m-0 __cate-item w-100">
                                             <a href="{{ route('category-products', ['slug' => $category['slug']]) }}">
                                                 <div class="__img mw-100 h-auto">
-                                                    <img alt="{{ $category->name }}"
+                                                    <img loading="lazy" decoding="async" width="90" height="90" alt="{{ $category->name }}"
                                                          src="{{ getStorageImages(path: $category->icon_full_url, type: 'category') }}">
                                                 </div>
                                                 <h3 class="text-center line--limit-2 small mt-2 letter-spacing-0">{{ $category->name }}</h3>

@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class CategoryManager
 {
@@ -102,11 +103,7 @@ class CategoryManager
 
 
         $categories = Cache::remember($cacheKey, CACHE_FOR_3_HOURS, function () use ($dataForm, $featuredDealProducts) {
-                return Category::with(['product' => function ($query) {
-                    return $query->active()->withCount(['orderDetails'])->with(['clearanceSale' => function ($query) {
-                        return $query->active();
-                    }]);
-                }])
+                return Category::query()
                 ->when($dataForm == 'flash-deals', function ($query) {
                     return $query->whereHas('product.flashDealProducts.flashDeal');
                 })
@@ -173,8 +170,34 @@ class CategoryManager
         $categoryProductSortBy = getWebConfig(name: 'category_list_priority');
         if ($categoryProductSortBy && ($categoryProductSortBy['custom_sorting_status'] == 1)) {
             if ($categoryProductSortBy['sort_by'] == 'most_order') {
-                return $query->map(function ($category) {
-                    $category->order_count = $category?->product?->sum('order_details_count') ?? 0;
+                $categories = collect($query);
+                $needsAggregate = $categories->contains(function ($category) {
+                    return !array_key_exists('order_count', $category->getAttributes())
+                        && !$category->relationLoaded('product');
+                });
+                $ordersByCategory = collect();
+
+                if ($needsAggregate) {
+                    $categoryIds = $categories->pluck('id')->all();
+                    $productOrderCounts = Product::active()
+                        ->whereIn('products.category_id', $categoryIds)
+                        ->select('products.category_id')
+                        ->withCount('orderDetails');
+
+                    $ordersByCategory = DB::query()
+                        ->fromSub($productOrderCounts->toBase(), 'active_category_products')
+                        ->select('category_id')
+                        ->selectRaw('SUM(order_details_count) as order_count')
+                        ->groupBy('category_id')
+                        ->pluck('order_count', 'category_id');
+                }
+
+                return $categories->map(function ($category) use ($ordersByCategory) {
+                    if (!array_key_exists('order_count', $category->getAttributes())) {
+                        $category->order_count = $category->relationLoaded('product')
+                            ? ($category->product?->sum('order_details_count') ?? 0)
+                            : (int) ($ordersByCategory[$category->id] ?? 0);
+                    }
                     return $category;
                 })->sortByDesc('order_count');
             } elseif ($categoryProductSortBy['sort_by'] == 'latest_created') {
