@@ -1,6 +1,6 @@
 "use strict";
 
-const CACHE_VERSION = "2026-10-28-01";
+const CACHE_VERSION = "2026-10-28-02";
 const STATIC_CACHE = "zulors-static-" + CACHE_VERSION;
 const NAVIGATION_CACHE = "zulors-navigation-" + CACHE_VERSION;
 const NAVIGATION_TTL_MS = 60 * 1000;
@@ -17,6 +17,7 @@ const ALLOWED_NAVIGATION_PATTERNS = [
     /^\/flash-deals\/\d+\/?$/,
 ];
 const clientPartitions = new Map();
+const partitionCacheEpochs = new Map();
 let lastNavigationPruneAt = 0;
 let navigationPrunePromise = null;
 
@@ -54,7 +55,8 @@ self.addEventListener("message", function (event) {
             || (/^[a-f0-9]{64}$/.test(data.partition || "") ? data.partition : null);
         if (partition) clientPartitions.set(clientId, partition);
         if (partition) {
-            event.waitUntil(prefetchNavigationUrl(data.url, partition).finally(function () {
+            const epoch = getPartitionCacheEpoch(partition);
+            event.waitUntil(prefetchNavigationUrl(data.url, partition, epoch).finally(function () {
                 event.source.postMessage({ type: "PREFETCH_DONE", id: data.id });
             }));
         }
@@ -63,7 +65,10 @@ self.addEventListener("message", function (event) {
 
     if (data.type === "CLEAR_PARTITION_CACHE" && clientId) {
         const partition = clientPartitions.get(clientId);
-        if (partition) event.waitUntil(clearPartitionCache(partition));
+        if (partition) {
+            partitionCacheEpochs.set(partition, getPartitionCacheEpoch(partition) + 1);
+            event.waitUntil(clearPartitionCache(partition));
+        }
     }
 });
 
@@ -116,17 +121,18 @@ function refreshStaticAsset(request, cache) {
 async function handleNavigationRequest(request, partition, event) {
     const cache = await caches.open(NAVIGATION_CACHE);
     await pruneNavigationCache(cache);
-    const cacheKey = navigationCacheKey(request.url, partition);
+    const epoch = getPartitionCacheEpoch(partition);
+    const cacheKey = navigationCacheKey(request.url, partition, epoch);
     const cachedResponse = await cache.match(cacheKey);
 
     if (cachedResponse && isNavigationCacheFresh(cachedResponse)) {
-        event.waitUntil(refreshNavigationCache(request, partition, cacheKey));
+        event.waitUntil(refreshNavigationCache(request, partition, cacheKey, epoch));
         return cachedResponse;
     }
 
     try {
         const response = await fetchNavigation(request, partition);
-        if (isCacheableNavigationResponse(response, partition)) {
+        if (getPartitionCacheEpoch(partition) === epoch && isCacheableNavigationResponse(response, partition)) {
             await cache.put(cacheKey, await createTimestampedResponse(response.clone()));
         }
         return response;
@@ -135,10 +141,10 @@ async function handleNavigationRequest(request, partition, event) {
     }
 }
 
-async function refreshNavigationCache(request, partition, cacheKey) {
+async function refreshNavigationCache(request, partition, cacheKey, epoch) {
     try {
         const response = await fetchNavigation(request, partition);
-        if (isCacheableNavigationResponse(response, partition)) {
+        if (getPartitionCacheEpoch(partition) === epoch && isCacheableNavigationResponse(response, partition)) {
             const cache = await caches.open(NAVIGATION_CACHE);
             await cache.put(cacheKey, await createTimestampedResponse(response.clone()));
         }
@@ -148,7 +154,7 @@ async function refreshNavigationCache(request, partition, cacheKey) {
     return null;
 }
 
-async function prefetchNavigationUrl(rawUrl, partition) {
+async function prefetchNavigationUrl(rawUrl, partition, epoch) {
     let url;
     try {
         url = new URL(rawUrl, SAME_ORIGIN);
@@ -160,7 +166,7 @@ async function prefetchNavigationUrl(rawUrl, partition) {
 
     const cache = await caches.open(NAVIGATION_CACHE);
     await pruneNavigationCache(cache);
-    const cacheKey = navigationCacheKey(url.toString(), partition);
+    const cacheKey = navigationCacheKey(url.toString(), partition, epoch);
     const cachedResponse = await cache.match(cacheKey);
     if (cachedResponse && isNavigationCacheFresh(cachedResponse)) return;
 
@@ -176,12 +182,16 @@ async function prefetchNavigationUrl(rawUrl, partition) {
             },
         });
         const response = await fetch(request);
-        if (isCacheableNavigationResponse(response, partition)) {
+        if (getPartitionCacheEpoch(partition) === epoch && isCacheableNavigationResponse(response, partition)) {
             await cache.put(cacheKey, await createTimestampedResponse(response.clone()));
         }
     } catch (error) {
         return null;
     }
+}
+
+function getPartitionCacheEpoch(partition) {
+    return partitionCacheEpochs.get(partition) || 0;
 }
 
 function fetchNavigation(request, partition) {
@@ -228,9 +238,10 @@ async function pruneNavigationCacheEntries(cache) {
     await Promise.all(excess.map(function (entry) { return cache.delete(entry.request); }));
 }
 
-function navigationCacheKey(rawUrl, partition) {
+function navigationCacheKey(rawUrl, partition, epoch) {
     const keyUrl = new URL(rawUrl, SAME_ORIGIN);
     keyUrl.searchParams.set("__zulors_partition", partition);
+    keyUrl.searchParams.set("__zulors_epoch", String(epoch));
     return new Request(keyUrl.toString(), { method: "GET", credentials: "same-origin" });
 }
 

@@ -6,7 +6,11 @@
 
     const prefetchLimit = Math.max(0, Math.min(Number(config.prefetchLimit || 8), 8));
     const maxConcurrentPrefetch = Math.max(1, Math.min(Number(config.maxConcurrentPrefetch || 2), 2));
-    const prefetchedUrls = new Set();
+    const maxTrackedPrefetches = 40;
+    const prefetchTrackingTtl = 55 * 1000;
+    const prefetchedUrls = new Map();
+    const pendingUrls = new Set();
+    const automaticPrefetchedUrls = new Set();
     const queue = [];
     const pendingPrefetches = new Map();
     let prefetchSequence = 0;
@@ -62,19 +66,74 @@
     function startPrefetch(rawUrl, highPriority) {
         if (!shouldPrefetch()) return;
         const url = normalizeUrl(rawUrl);
-        if (!url || prefetchedUrls.has(url) || prefetchedUrls.size >= prefetchLimit) return;
-        prefetchedUrls.add(url);
-        if (highPriority) queue.unshift(url);
-        else queue.push(url);
+        if (!url) return;
+
+        const now = Date.now();
+        prefetchedUrls.forEach(function (startedAt, trackedUrl) {
+            if (now - startedAt >= prefetchTrackingTtl && !pendingUrls.has(trackedUrl)) {
+                prefetchedUrls.delete(trackedUrl);
+            }
+        });
+
+        if (prefetchedUrls.has(url)) {
+            prefetchedUrls.delete(url);
+            prefetchedUrls.set(url, now);
+            if (highPriority) promoteQueuedPrefetch(url);
+            return;
+        }
+
+        if (!highPriority && automaticPrefetchedUrls.size >= prefetchLimit) return;
+        if (!makePrefetchRoom(highPriority)) return;
+
+        prefetchedUrls.set(url, now);
+        pendingUrls.add(url);
+        if (!highPriority) automaticPrefetchedUrls.add(url);
+
+        const entry = { url: url, highPriority: !!highPriority };
+        if (highPriority) queue.unshift(entry);
+        else queue.push(entry);
         drainQueue();
+    }
+
+    function promoteQueuedPrefetch(url) {
+        const index = queue.findIndex(function (entry) { return entry.url === url; });
+        if (index < 0) return;
+
+        const entry = queue.splice(index, 1)[0];
+        entry.highPriority = true;
+        queue.unshift(entry);
+    }
+
+    function makePrefetchRoom(highPriority) {
+        if (prefetchedUrls.size < maxTrackedPrefetches) return true;
+
+        for (const trackedUrl of prefetchedUrls.keys()) {
+            if (pendingUrls.has(trackedUrl)) continue;
+            prefetchedUrls.delete(trackedUrl);
+            return true;
+        }
+
+        if (!highPriority) return false;
+
+        for (let index = queue.length - 1; index >= 0; index -= 1) {
+            const queued = queue[index];
+            if (queued.highPriority) continue;
+            queue.splice(index, 1);
+            pendingUrls.delete(queued.url);
+            prefetchedUrls.delete(queued.url);
+            return true;
+        }
+
+        return false;
     }
 
     function drainQueue() {
         while (shouldPrefetch() && activePrefetches < maxConcurrentPrefetch && queue.length) {
-            const url = queue.shift();
+            const entry = queue.shift();
             activePrefetches += 1;
-            prefetch(url).finally(function () {
+            prefetch(entry.url).finally(function () {
                 activePrefetches = Math.max(0, activePrefetches - 1);
+                pendingUrls.delete(entry.url);
                 drainQueue();
             });
         }
@@ -205,7 +264,9 @@
     window.clearZulorsPrefetchedPages = function () {
         sendWorkerMessage({ type: "CLEAR_PARTITION_CACHE" });
         prefetchedUrls.clear();
+        automaticPrefetchedUrls.clear();
         queue.length = 0;
+        pendingUrls.clear();
         document.querySelectorAll("a[href], .get-view-by-onclick[data-link], [data-prefetch-url]").forEach(function (target) {
             delete target.dataset.prefetchObserved;
         });

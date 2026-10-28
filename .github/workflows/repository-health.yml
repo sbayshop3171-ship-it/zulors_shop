@@ -63,6 +63,10 @@ jobs:
           cache: npm
           cache-dependency-path: Zulors Shop Admin and Web V15.7/package-lock.json
 
+      - name: Test storefront navigation prefetch
+        working-directory: Zulors Shop Admin and Web V15.7
+        run: npm run test:instant-navigation
+
       - name: Install JavaScript dependencies
         working-directory: Zulors Shop Admin and Web V15.7
         run: npm ci --no-audit --no-fund
