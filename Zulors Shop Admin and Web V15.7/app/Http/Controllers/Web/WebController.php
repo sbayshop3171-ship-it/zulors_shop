@@ -259,42 +259,21 @@ class WebController extends Controller
     public function getSearchedProducts(Request $request): JsonResponse
     {
         $request->validate([
-            'name' => 'required',
+            'name' => 'required|string|max:100',
         ], [
             'name.required' => 'Product name is required!',
         ]);
 
         $result = ProductManager::getSearchProductsForWeb($request['name'], $request['category_id'] ?? 'all');
         $products = $result['products'];
-        if ($products == null) {
+        if (!$products || count($products) === 0) {
             $result = ProductManager::getTranslatedProductSearchForWeb($request['name'], $request['category_id'] ?? 'all');
             $products = $result['products'];
         }
 
-        $sellers = Shop::where(function ($query) use ($request) {
-            $query->orWhere('name', 'like', "%{$request['name']}%");
-        })->whereHas('seller', function ($query) {
-            return $query->where(['status' => 'approved']);
-        })->with('products', function ($query) {
-            return $query->active()->where('added_by', 'seller');
-        })->get();
-
-        $product_ids = [];
-        foreach ($sellers as $seller) {
-            if (isset($seller->product) && $seller->product->count() > 0) {
-                $ids = $seller->product->pluck('id');
-                array_push($product_ids, ...$ids);
-            }
-        }
-
-        $companyName = getInHouseShopConfig(key: 'name');
-        if (strpos($request['name'], $companyName) !== false) {
-            $ids = Product::active()->Where('added_by', 'admin')->pluck('id');
-            array_push($product_ids, ...$ids);
-        }
-
-        $seller_products = Product::active()->withCount('reviews')->whereIn('id', $product_ids)
-            ->orderByRaw("LOCATE('{$request['name']}', name), name")->get();
+        // The search-result views render only matching products. Avoid loading
+        // every product owned by shops whose names happen to match the query.
+        $seller_products = collect();
 
         return response()->json([
             'result' => view(VIEW_FILE_NAMES['product_search_result'], compact('products', 'seller_products'))->render(),
@@ -305,14 +284,14 @@ class WebController extends Controller
     public function getSearchedProductsForCompareList(Request $request): JsonResponse
     {
         $request->validate([
-            'name' => 'required',
+            'name' => 'required|string|max:100',
         ], [
             'name.required' => 'Product name is required!',
         ]);
         $compare_id = $request['compare_id'];
         $result = ProductManager::getSearchProductsForWeb($request['name']);
         $products = $result['products'];
-        if ($products == null) {
+        if (!$products || count($products) === 0) {
             $result = ProductManager::getTranslatedProductSearchForWeb($request['name']);
             $products = $result['products'];
         }

@@ -374,10 +374,23 @@ We may release future updates so it will overwrite this file. it's better and sa
     /*==================================
     15: Swiper
     ====================================*/
-    $(window).on("load", function () {
-        var $swiper = $(".swiper");
+    function initThemeSwipers(root) {
+        if (typeof Swiper === "undefined") {
+            return;
+        }
+
+        var $root = root ? $(root) : $(document);
+        var $swiper = $root.find(".swiper");
+        if ($root.is(".swiper")) {
+            $swiper = $swiper.add($root);
+        }
+
         $swiper.each(function () {
             var $t = $(this);
+            if (this.swiper) {
+                return;
+            }
+
             new Swiper($t[0], {
                 slidesPerView: checkData($t.data("swiper-items"), 1),
                 spaceBetween: checkData($t.data("swiper-margin"), 0),
@@ -435,6 +448,24 @@ We may release future updates so it will overwrite this file. it's better and sa
                     }
                 }
             });
+        });
+    }
+
+    window.initThemeSwipers = initThemeSwipers;
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", function () {
+            initThemeSwipers();
+        });
+    } else {
+        initThemeSwipers();
+    }
+
+    window.addEventListener("pageshow", function () {
+        initThemeSwipers();
+        $(".swiper").each(function () {
+            if (this.swiper) {
+                this.swiper.update();
+            }
         });
     });
 

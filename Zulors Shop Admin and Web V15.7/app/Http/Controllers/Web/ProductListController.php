@@ -24,6 +24,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Routing\Redirector;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class ProductListController extends Controller
@@ -321,32 +322,54 @@ class ProductListController extends Controller
 
     function getProductsRatingOneToFiveAsArray($productQuery): array
     {
-        $rating_1 = 0;
-        $rating_2 = 0;
-        $rating_3 = 0;
-        $rating_4 = 0;
-        $rating_5 = 0;
+        if (!($productQuery instanceof \Illuminate\Database\Eloquent\Builder)) {
+            $ratingCounts = [
+                'rating_1' => 0,
+                'rating_2' => 0,
+                'rating_3' => 0,
+                'rating_4' => 0,
+                'rating_5' => 0,
+            ];
 
-        foreach ($productQuery as $rating) {
-            if (isset($rating->rating[0]['average']) && ($rating->rating[0]['average'] > 0 && $rating->rating[0]['average'] < 2)) {
-                $rating_1 += 1;
-            } elseif (isset($rating->rating[0]['average']) && ($rating->rating[0]['average'] >= 2 && $rating->rating[0]['average'] < 3)) {
-                $rating_2 += 1;
-            } elseif (isset($rating->rating[0]['average']) && ($rating->rating[0]['average'] >= 3 && $rating->rating[0]['average'] < 4)) {
-                $rating_3 += 1;
-            } elseif (isset($rating->rating[0]['average']) && ($rating->rating[0]['average'] >= 4 && $rating->rating[0]['average'] < 5)) {
-                $rating_4 += 1;
-            } elseif (isset($rating->rating[0]['average']) && ($rating->rating[0]['average'] == 5)) {
-                $rating_5 += 1;
+            foreach ($productQuery as $product) {
+                $averageRating = $product->rating[0]['average'] ?? null;
+                if ($averageRating > 0 && $averageRating < 2) {
+                    $ratingCounts['rating_1']++;
+                } elseif ($averageRating >= 2 && $averageRating < 3) {
+                    $ratingCounts['rating_2']++;
+                } elseif ($averageRating >= 3 && $averageRating < 4) {
+                    $ratingCounts['rating_3']++;
+                } elseif ($averageRating >= 4 && $averageRating < 5) {
+                    $ratingCounts['rating_4']++;
+                } elseif ($averageRating == 5) {
+                    $ratingCounts['rating_5']++;
+                }
             }
+
+            return $ratingCounts;
         }
 
+        $ratedProducts = (clone $productQuery)
+            ->reorder()
+            ->select('products.id')
+            ->withAvg('reviews', 'rating')
+            ->toBase();
+
+        $ratingCounts = DB::query()
+            ->fromSub($ratedProducts, 'rated_products')
+            ->selectRaw('SUM(CASE WHEN reviews_avg_rating > 0 AND reviews_avg_rating < 2 THEN 1 ELSE 0 END) AS rating_1')
+            ->selectRaw('SUM(CASE WHEN reviews_avg_rating >= 2 AND reviews_avg_rating < 3 THEN 1 ELSE 0 END) AS rating_2')
+            ->selectRaw('SUM(CASE WHEN reviews_avg_rating >= 3 AND reviews_avg_rating < 4 THEN 1 ELSE 0 END) AS rating_3')
+            ->selectRaw('SUM(CASE WHEN reviews_avg_rating >= 4 AND reviews_avg_rating < 5 THEN 1 ELSE 0 END) AS rating_4')
+            ->selectRaw('SUM(CASE WHEN reviews_avg_rating = 5 THEN 1 ELSE 0 END) AS rating_5')
+            ->first();
+
         return [
-            'rating_1' => $rating_1,
-            'rating_2' => $rating_2,
-            'rating_3' => $rating_3,
-            'rating_4' => $rating_4,
-            'rating_5' => $rating_5,
+            'rating_1' => (int) ($ratingCounts->rating_1 ?? 0),
+            'rating_2' => (int) ($ratingCounts->rating_2 ?? 0),
+            'rating_3' => (int) ($ratingCounts->rating_3 ?? 0),
+            'rating_4' => (int) ($ratingCounts->rating_4 ?? 0),
+            'rating_5' => (int) ($ratingCounts->rating_5 ?? 0),
         ];
     }
 

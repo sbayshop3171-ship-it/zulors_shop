@@ -7,25 +7,107 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-health-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  laravel-php-syntax:
-    name: Laravel PHP Syntax
+  laravel-build-test:
+    name: Laravel build and tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup PHP
+      - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: "8.4"
-          extensions: curl, dom, fileinfo, gd, intl, mbstring, mysqli, openssl, zip
+          extensions: curl, dom, fileinfo, gd, intl, mbstring, mysqli, openssl, pdo_sqlite, sqlite3, zip
+          tools: composer:v2
+          coverage: none
+
+      - name: Validate Composer configuration
+        working-directory: Zulors Shop Admin and Web V15.7
+        run: composer validate --no-check-publish --no-check-lock
+
+      - name: Install PHP dependencies
+        working-directory: Zulors Shop Admin and Web V15.7
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Lint Laravel PHP files
         working-directory: Zulors Shop Admin and Web V15.7
         run: |
           find app bootstrap config database routes tests Modules -type f -name '*.php' -print0 \
             | xargs -0 -n1 php -l
+
+      - name: Run Laravel tests
+        working-directory: Zulors Shop Admin and Web V15.7
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          CACHE_STORE: array
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+          QUEUE_CONNECTION: sync
+          SESSION_DRIVER: array
+        run: vendor/bin/phpunit
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: npm
+          cache-dependency-path: Zulors Shop Admin and Web V15.7/package-lock.json
+
+      - name: Install JavaScript dependencies
+        working-directory: Zulors Shop Admin and Web V15.7
+        run: npm ci --no-audit --no-fund
+
+      - name: Build production assets
+        working-directory: Zulors Shop Admin and Web V15.7
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: npm run production
+
+      - name: Package Laravel release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: Zulors Shop Admin and Web V15.7
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          # Mix omits the already-compiled CSS mapping because this source
+          # archive has no Sass input. Preserve the committed CSS manifest.
+          git checkout -- public/mix-manifest.json
+          tar -czf "$RUNNER_TEMP/app-release.tar.gz" \
+            --exclude='./.env' \
+            --exclude='./.git' \
+            --exclude='./node_modules' \
+            --exclude='./vendor' \
+            --exclude='./storage/app' \
+            --exclude='./storage/framework/cache' \
+            --exclude='./storage/framework/sessions' \
+            --exclude='./storage/framework/views' \
+            --exclude='./storage/logs' \
+            --exclude='./public/storage' \
+            -C . .
+          printf '%s\n' "$RELEASE_SHA" > "$RUNNER_TEMP/release-sha.txt"
+          (cd "$RUNNER_TEMP" && sha256sum app-release.tar.gz > app-release.tar.gz.sha256)
+
+      - name: Upload immutable release artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: laravel-release-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/app-release.tar.gz
+            ${{ runner.temp }}/app-release.tar.gz.sha256
+            ${{ runner.temp }}/release-sha.txt
+          if-no-files-found: error
+          retention-days: 90
 
   flutter-pub-check:
     name: Flutter Pub Check
@@ -40,7 +122,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Flutter
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable

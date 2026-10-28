@@ -1,0 +1,138 @@
+name: Manual Production Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_live:
+        description: "Deploy the latest successful main build to production"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: inputs.confirm_live == true
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      PRODUCTION_DEPLOYMENT_READY: ${{ vars.PRODUCTION_DEPLOYMENT_READY }}
+      PRODUCTION_HOST: ${{ secrets.PRODUCTION_HOST }}
+      PRODUCTION_USER: ${{ secrets.PRODUCTION_USER }}
+      PRODUCTION_SSH_PRIVATE_KEY: ${{ secrets.PRODUCTION_SSH_PRIVATE_KEY }}
+      PRODUCTION_KNOWN_HOSTS: ${{ secrets.PRODUCTION_KNOWN_HOSTS }}
+      PRODUCTION_APP_PATH: ${{ vars.PRODUCTION_APP_PATH }}
+      PRODUCTION_APP_OWNER: ${{ vars.PRODUCTION_APP_OWNER }}
+      PRODUCTION_APP_GROUP: ${{ vars.PRODUCTION_APP_GROUP }}
+      PRODUCTION_HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL }}
+    steps:
+      - name: Check manual deploy configuration
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Dispatch this workflow from main; production only deploys main builds." >&2
+            exit 1
+          fi
+          if [[ "$PRODUCTION_DEPLOYMENT_READY" != "true" ]]; then
+            echo "Production is locked. Set the production readiness variable only after disabling the old auto-deploy cron and verifying this project's server path." >&2
+            exit 1
+          fi
+          for name in PRODUCTION_HOST PRODUCTION_USER PRODUCTION_SSH_PRIVATE_KEY PRODUCTION_KNOWN_HOSTS PRODUCTION_APP_PATH PRODUCTION_APP_OWNER PRODUCTION_APP_GROUP PRODUCTION_HEALTH_URL; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing production environment setting: $name" >&2
+              exit 1
+            fi
+          done
+          [[ "$PRODUCTION_HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo "PRODUCTION_HOST has an invalid format." >&2; exit 1; }
+          [[ "$PRODUCTION_USER" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "PRODUCTION_USER has an invalid format." >&2; exit 1; }
+          [[ "$PRODUCTION_APP_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "PRODUCTION_APP_PATH must be an absolute path without whitespace." >&2; exit 1; }
+          [[ "$PRODUCTION_APP_PATH" != *"/../"* && "$PRODUCTION_APP_PATH" != */.. && "$PRODUCTION_APP_PATH" != *"/./"* && "$PRODUCTION_APP_PATH" != */. && "$PRODUCTION_APP_PATH" != *"//"* ]] || { echo "PRODUCTION_APP_PATH must be normalized." >&2; exit 1; }
+          [[ "$PRODUCTION_APP_OWNER" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "PRODUCTION_APP_OWNER has an invalid format." >&2; exit 1; }
+          [[ "$PRODUCTION_APP_GROUP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "PRODUCTION_APP_GROUP has an invalid format." >&2; exit 1; }
+          [[ "$PRODUCTION_HEALTH_URL" == https://* ]] || { echo "PRODUCTION_HEALTH_URL must use HTTPS." >&2; exit 1; }
+
+      - name: Select latest successful main build
+        id: release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const response = await github.rest.actions.listWorkflowRuns({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'repository-health.yml',
+              branch: 'main',
+              event: 'push',
+              status: 'success',
+              per_page: 100,
+            });
+            const run = response.data.workflow_runs.find(candidate =>
+              candidate.event === 'push' &&
+              candidate.head_branch === 'main' &&
+              candidate.conclusion === 'success'
+            );
+            if (!run) {
+              core.setFailed('No successful push build for main is available to deploy.');
+              return;
+            }
+            core.setOutput('run_id', String(run.id));
+            core.setOutput('sha', run.head_sha);
+            core.info(`Selected successful main build ${run.head_sha}.`);
+
+      - name: Download release artifact from selected build
+        uses: actions/download-artifact@v4
+        with:
+          name: laravel-release-${{ steps.release.outputs.sha }}
+          run-id: ${{ steps.release.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: release
+
+      - name: Verify immutable release artifact
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          test "$(cat release/release-sha.txt)" = "$RELEASE_SHA"
+          (cd release && sha256sum --check app-release.tar.gz.sha256)
+
+      - name: Load SSH key and trusted host key
+        shell: bash
+        run: |
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "$PRODUCTION_SSH_PRIVATE_KEY" | ssh-add -
+          mkdir -p "$RUNNER_TEMP/zulors-ssh"
+          printf '%s\n' "$PRODUCTION_KNOWN_HOSTS" > "$RUNNER_TEMP/zulors-ssh/known_hosts"
+          chmod 600 "$RUNNER_TEMP/zulors-ssh/known_hosts"
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_KNOWN_HOSTS=$RUNNER_TEMP/zulors-ssh/known_hosts" >> "$GITHUB_ENV"
+
+      - name: Upload release artifact
+        env:
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          RELEASE_CHECKSUM="$(awk '{print $1}' release/app-release.tar.gz.sha256)"
+          REMOTE_ARCHIVE="/tmp/zulors-release-${RELEASE_SHA}.tar.gz"
+          SSH_OPTIONS=(-o BatchMode=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$SSH_KNOWN_HOSTS")
+          scp "${SSH_OPTIONS[@]}" release/app-release.tar.gz "$PRODUCTION_USER@$PRODUCTION_HOST:$REMOTE_ARCHIVE"
+          REMOTE_COMMAND="status=0; sudo -n /usr/local/sbin/zulors-manual-deploy $RELEASE_SHA $REMOTE_ARCHIVE $RELEASE_CHECKSUM $PRODUCTION_APP_PATH $PRODUCTION_APP_OWNER $PRODUCTION_APP_GROUP || status=\$?; rm -f $REMOTE_ARCHIVE; exit \$status"
+          ssh "${SSH_OPTIONS[@]}" "$PRODUCTION_USER@$PRODUCTION_HOST" "$REMOTE_COMMAND"
+
+      - name: Verify production health
+        env:
+          HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL }}
+        run: |
+          for attempt in {1..10}; do
+            status="$(curl --location --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 20 "$HEALTH_URL" 2>/dev/null || true)"
+            if [[ "$status" =~ ^2[0-9][0-9]$ ]]; then
+              echo "Production health check passed (HTTP $status)."
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "Production health check did not return HTTP 2xx (last status: ${status:-no response})." >&2
+          exit 1

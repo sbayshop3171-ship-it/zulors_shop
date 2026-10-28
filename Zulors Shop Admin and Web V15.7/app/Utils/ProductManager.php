@@ -444,37 +444,45 @@ class ProductManager
 
     public static function getSearchProductsForWeb($name, $category = 'all', $limit = 10, $offset = 1): array
     {
-        $authorIds = Author::where('name', 'like', "%{$name}%")->pluck('id')->toArray();
-        $authorProductIds = DigitalProductAuthor::whereIn('author_id', $authorIds)->pluck('product_id')->toArray();
+        $name = trim((string) $name);
+        $searchPattern = "%{$name}%";
+        $limit = max(1, min(20, (int) $limit));
+        $page = max(1, (int) $offset);
 
-        $publishingHouseIds = PublishingHouse::where('name', 'like', "%{$name}%")->pluck('id')->toArray();
-        $publishingHouseProductIds = DigitalProductPublishingHouse::whereIn('publishing_house_id', $publishingHouseIds)->pluck('product_id')->toArray();
-
-        $productListData = Product::active()->with(['rating', 'tags'])->where(function ($q) use ($name) {
-            $q->orWhere('name', 'like', "%{$name}%")
-                ->orWhereHas('tags', function ($query) use ($name) {
-                    $query->where('tag', 'like', "%{$name}%");
+        $productListData = Product::active()->where(function ($query) use ($searchPattern) {
+            $query->where('name', 'like', $searchPattern)
+                ->orWhereHas('tags', function ($tagQuery) use ($searchPattern) {
+                    $tagQuery->where('tag', 'like', $searchPattern);
+                })
+                ->orWhereHas('digitalProductAuthors.author', function ($authorQuery) use ($searchPattern) {
+                    $authorQuery->where('name', 'like', $searchPattern);
+                })
+                ->orWhereHas('digitalProductPublishingHouse.publishingHouse', function ($publishingHouseQuery) use ($searchPattern) {
+                    $publishingHouseQuery->where('name', 'like', $searchPattern);
                 });
-        })->when(!empty($authorProductIds), function ($query) use ($authorProductIds) {
-            $query->whereIn('id', $authorProductIds);
-        })->when(!empty($publishingHouseProductIds), function ($query) use ($publishingHouseProductIds) {
-            $query->whereIn('id', $publishingHouseProductIds);
         });
 
-        if (isset($category) && $category != 'all') {
-            $categoryWiseProduct = $productListData->where(['category_id' => $category])
-                ->orWhere(['sub_category_id' => $category])
-                ->orWhere(['sub_sub_category_id' => $category]);
-            $productListData = ProductManager::getPriorityWiseCategoryWiseProductsQuery(query: $categoryWiseProduct, dataLimit: $limit, offset: $offset);
-        } else {
-            $productListData = ProductManager::getPriorityWiseSearchedProductQuery(query: $productListData, keyword: $name, dataLimit: $limit, offset: $offset, type: 'searched');
+        if ($category !== null && $category !== '' && $category !== 'all') {
+            $productListData->where(function ($categoryQuery) use ($category) {
+                $categoryQuery->where('category_id', $category)
+                    ->orWhere('sub_category_id', $category)
+                    ->orWhere('sub_sub_category_id', $category);
+            });
         }
 
+        $products = $productListData
+            ->orderByRaw(
+                'CASE WHEN products.name LIKE ? THEN 1 ELSE 2 END, LOCATE(?, products.name), products.name',
+                [$searchPattern, $name]
+            )
+            ->forPage($page, $limit)
+            ->get();
+
         return [
-            'total_size' => $productListData->total(),
+            'total_size' => $products->count(),
             'limit' => (int)$limit,
-            'offset' => (int)$offset,
-            'products' => $productListData->items()
+            'offset' => $page,
+            'products' => $products,
         ];
     }
 
@@ -512,25 +520,34 @@ class ProductManager
 
     public static function getTranslatedProductSearchForWeb($name, $category = 'all', $limit = 10, $offset = 1): array
     {
-        $translationIds = Translation::where('translationable_type', 'App\Models\Product')
-            ->where('key', 'name')
-            ->where('value', 'like', "%{$name}%")
-            ->pluck('translationable_id');
+        $name = trim((string) $name);
+        $searchPattern = "%{$name}%";
+        $limit = max(1, min(20, (int) $limit));
+        $page = max(1, (int) $offset);
 
-        $productListData = Product::with(['tags', 'translations'])
-            ->whereIn('id', $translationIds);
+        $productListData = Product::active()
+            ->with(['translations' => function ($translationQuery) {
+                $translationQuery->where('key', 'name');
+            }])
+            ->whereHas('translations', function ($translationQuery) use ($searchPattern) {
+                $translationQuery->where('key', 'name')
+                    ->where('value', 'like', $searchPattern);
+            });
 
-        if ($category !== 'all') {
+        if ($category !== null && $category !== '' && $category !== 'all') {
             $productListData->whereJsonContains('category_ids', [['id' => $category]]);
         }
 
-        $productListData = ProductManager::getPriorityWiseSearchedProductQuery(query: $productListData, keyword: $name, dataLimit: $limit, offset: $offset, type: 'translated');
+        $products = $productListData
+            ->orderByDesc('products.id')
+            ->forPage($page, $limit)
+            ->get();
 
         return [
-            'total_size' => $productListData->total(),
+            'total_size' => $products->count(),
             'limit' => (int)$limit,
-            'offset' => (int)$offset,
-            'products' => $productListData->items(),
+            'offset' => $page,
+            'products' => $products,
         ];
     }
 
@@ -1986,46 +2003,6 @@ class ProductManager
             $request->merge(['category_ids' => $filteredData]);
         }
 
-        $publishingHouseList = PublishingHouse::with(['publishingHouseProducts'])
-            ->whereHas('publishingHouseProducts.product', function ($query) {
-                return $query->active();
-            })
-            ->withCount(['publishingHouseProducts' => function ($query) {
-                return $query->whereHas('product', function ($query) {
-                    return $query->active();
-                });
-            }])->get();
-
-        $productIdsForPublisher = [];
-        foreach ($publishingHouseList as $publishingHouseGroup) {
-            if (!empty($publishingHouseGroup->publishingHouseProducts)) {
-                foreach ($publishingHouseGroup->publishingHouseProducts as $publishingHouse) {
-                    $productIdsForPublisher[] = $publishingHouse->product_id;
-                }
-            }
-        }
-
-
-        $productIdsForUnknownPublisher = Product::active()->where(['product_type' => 'digital'])->whereNotIn('id', $productIdsForPublisher)->pluck('id')->toArray();
-
-        $authorList = Author::withCount(['digitalProductAuthor' => function ($query) {
-            return $query->whereHas('product', function ($query) {
-                return $query->active();
-            });
-        }])->get();
-
-
-        $productIdsForAuthor = [];
-        foreach ($authorList as $authorGroup) {
-            if (!empty($authorGroup->digitalProductAuthor)) {
-                foreach ($authorGroup->digitalProductAuthor as $authorItem) {
-                    $productIdsForAuthor[] = $authorItem->product_id;
-                }
-            }
-        }
-
-        $productIdsForUnknownAuthor = Product::active()->where(['product_type' => 'digital'])->whereNotIn('id', $productIdsForAuthor)->pluck('id')->toArray();
-
         $productSortBy = $request->get('sort_by');
 
         if (FacadesRequest::is('flash-deals/*') && $request->has('flash_deals_id') && $request['flash_deals_id']) {
@@ -2099,90 +2076,56 @@ class ProductManager
                 return $query->whereIn('id', $digitalPublishingHouseIds ?? []);
             })
             ->when($request->has('publishing_house_id') && $request['publishing_house_id'] != '' && $request['publishing_house_id'] == 0, function ($query) use ($request) {
-                $publishingHouseList = PublishingHouse::with(['publishingHouseProducts'])
-                    ->whereHas('publishingHouseProducts.product', function ($query) {
-                        return $query->active();
-                    })
-                    ->withCount(['publishingHouseProducts' => function ($query) {
-                        return $query->whereHas('product', function ($query) {
-                            return $query->active();
-                        });
-                    }])->get();
-
-                $productIds = [];
-                foreach ($publishingHouseList as $publishingHouseGroup) {
-                    if (!empty($publishingHouseGroup->publishingHouseProducts)) {
-                        foreach ($publishingHouseGroup->publishingHouseProducts as $publishingHouse) {
-                            $productIds[] = $publishingHouse->product_id;
-                        }
-                    }
-                }
-                return $query->where(['product_type' => 'digital'])->whereNotIn('id', $productIds);
+                return $query->where('product_type', 'digital')
+                    ->whereDoesntHave('digitalProductPublishingHouse');
             })
-            ->when($request->has('publishing_house_ids') && !empty($request['publishing_house_ids']), function ($query) use ($request, $productIdsForUnknownPublisher) {
-                $publishingHouseList = PublishingHouse::whereIn('id', $request['publishing_house_ids'])->with(['publishingHouseProducts'])->withCount(['publishingHouseProducts' => function ($query) {
-                    return $query->whereHas('product', function ($query) {
-                        return $query->active();
-                    });
-                }])->get();
+            ->when($request->has('publishing_house_ids') && !empty($request['publishing_house_ids']), function ($query) use ($request) {
+                $publisherIds = array_values(array_filter($request['publishing_house_ids'], fn($id) => (int) $id > 0));
+                $includeUnknown = in_array(0, array_map('intval', $request['publishing_house_ids']), true);
 
-                $publishingHouseProductIds = [];
-                foreach ($publishingHouseList as $publishingHouseGroup) {
-                    if (!empty($publishingHouseGroup->publishingHouseProducts)) {
-                        foreach ($publishingHouseGroup->publishingHouseProducts as $publishingHouse) {
-                            $publishingHouseProductIds[] = $publishingHouse->product_id;
+                return $query->where('product_type', 'digital')->where(function ($publisherQuery) use ($publisherIds, $includeUnknown) {
+                    if (!empty($publisherIds)) {
+                        $publisherQuery->whereHas('digitalProductPublishingHouse', function ($relationQuery) use ($publisherIds) {
+                            $relationQuery->whereIn('publishing_house_id', $publisherIds);
+                        });
+                    }
+
+                    if ($includeUnknown) {
+                        if (!empty($publisherIds)) {
+                            $publisherQuery->orWhereDoesntHave('digitalProductPublishingHouse');
+                        } else {
+                            $publisherQuery->whereDoesntHave('digitalProductPublishingHouse');
                         }
                     }
-                }
-
-                if (in_array(0, $request['publishing_house_ids'])) {
-                    $publishingHouseProductIds = array_merge($publishingHouseProductIds, $productIdsForUnknownPublisher);
-                }
-
-                return $query->where(['product_type' => 'digital'])->whereIn('id', $publishingHouseProductIds);
+                });
             })
             ->when($request->has('author_id') && $request['author_id'] != '' && $request['author_id'] != 0, function ($query) use ($request) {
                 $digitalAuthorIds = DigitalProductAuthor::where(['author_id' => $request['author_id']])->pluck('product_id')->toArray();
                 return $query->whereIn('id', $digitalAuthorIds);
             })
             ->when($request->has('author_id') && $request['author_id'] != '' && $request['author_id'] == 0, function ($query) use ($request) {
-                $authorList = Author::withCount(['digitalProductAuthor' => function ($query) {
-                    return $query->whereHas('product', function ($query) {
-                        return $query->active();
-                    });
-                }])->get();
-
-                $productIds = [];
-                foreach ($authorList as $authorGroup) {
-                    if (!empty($authorGroup->digitalProductAuthor)) {
-                        foreach ($authorGroup->digitalProductAuthor as $authorItem) {
-                            $productIds[] = $authorItem->product_id;
-                        }
-                    }
-                }
-                return $query->where(['product_type' => 'digital'])->whereNotIn('id', $productIds);
+                return $query->where('product_type', 'digital')
+                    ->whereDoesntHave('digitalProductAuthors');
             })
-            ->when($request->has('author_ids') && !empty($request['author_ids']) && is_array($request['author_ids']), function ($query) use ($request, $productIdsForUnknownAuthor) {
+            ->when($request->has('author_ids') && !empty($request['author_ids']) && is_array($request['author_ids']), function ($query) use ($request) {
+                $authorIds = array_values(array_filter($request['author_ids'], fn($id) => (int) $id > 0));
+                $includeUnknown = in_array(0, array_map('intval', $request['author_ids']), true);
 
-                $authorList = Author::whereIn('id', $request['author_ids'])->withCount(['digitalProductAuthor' => function ($query) {
-                    return $query->whereHas('product', function ($query) {
-                        return $query->active();
-                    });
-                }])->get();
+                return $query->where('product_type', 'digital')->where(function ($authorQuery) use ($authorIds, $includeUnknown) {
+                    if (!empty($authorIds)) {
+                        $authorQuery->whereHas('digitalProductAuthors', function ($relationQuery) use ($authorIds) {
+                            $relationQuery->whereIn('author_id', $authorIds);
+                        });
+                    }
 
-                $authorProductIds = [];
-                foreach ($authorList as $authorGroup) {
-                    if (!empty($authorGroup->digitalProductAuthor)) {
-                        foreach ($authorGroup->digitalProductAuthor as $authorItem) {
-                            $authorProductIds[] = $authorItem->product_id;
+                    if ($includeUnknown) {
+                        if (!empty($authorIds)) {
+                            $authorQuery->orWhereDoesntHave('digitalProductAuthors');
+                        } else {
+                            $authorQuery->whereDoesntHave('digitalProductAuthors');
                         }
                     }
-                }
-
-                if (in_array(0, $request['author_ids'])) {
-                    $authorProductIds = array_merge($authorProductIds, $productIdsForUnknownAuthor);
-                }
-                return $query->where(['product_type' => 'digital'])->whereIn('id', $authorProductIds);
+                });
             })
             ->when($request['offer_type'] == 'discounted', function ($query) {
                 $stockClearanceProductIds = StockClearanceProduct::active()->pluck('product_id')->toArray();

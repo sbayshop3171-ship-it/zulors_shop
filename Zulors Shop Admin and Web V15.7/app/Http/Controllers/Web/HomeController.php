@@ -185,8 +185,7 @@ class HomeController extends Controller
         ])->withCount(['reviews']);
 
         $orderDetails = Cache::remember(CACHE_ORDER_DETAILS_TABLE, CACHE_FOR_3_HOURS, function () {
-            return OrderDetail::with('product')
-                ->select('product_id', DB::raw('COUNT(product_id) as count'))
+            return OrderDetail::select('product_id', DB::raw('COUNT(product_id) as count'))
                 ->groupBy('product_id')
                 ->get();
         });

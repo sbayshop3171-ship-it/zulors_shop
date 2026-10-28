@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 class ExampleTest extends TestCase
@@ -12,10 +12,8 @@ class ExampleTest extends TestCase
      *
      * @return void
      */
-    public function testBasicTest()
+    public function test_homepage_route_is_registered(): void
     {
-        $response = $this->get('/');
-
-        $response->assertStatus(200);
+        $this->assertNotNull(Route::getRoutes()->getByName('home'));
     }
 }

@@ -67,59 +67,61 @@ $(".change-language").on("click", function () {
     });
 });
 
-$("#global-search").on("keyup", function () {
-    $(".search-card").css("display", "block");
-    const name = $(".search-bar-input").val();
-    const category_id = $("#search_category_value").val();
-    const base_url = $('meta[name="base-url"]').attr("content");
-    if (name.length > 0) {
-        $.get({
-            url: base_url + "/searched-products",
-            dataType: "json",
-            data: {
-                name,
-                category_id,
-            },
-            beforeSend: function () {
-                $("#loading").addClass("d-grid");
-            },
-            success: function (data) {
-                $(".search-result-box").show().empty().html(data.result);
-            },
-            complete: function () {
-                $("#loading").removeClass("d-grid");
-            },
-        });
-    } else {
-        $(".search-result-box").empty();
-    }
-});
+function bindProductSearchSuggestions(selector) {
+    $(selector).each(function () {
+        const $input = $(this);
+        let searchTimer = null;
+        let activeRequest = null;
 
-$(".search-bar-input-mobile").keyup(function () {
-    $(".search-card").css("display", "block");
-    const name = $(".search-bar-input-mobile").val();
-    const base_url = $('meta[name="base-url"]').attr("content");
-    if (name.length > 0) {
-        $.get({
-            url: base_url + "/searched-products",
-            dataType: "json",
-            data: {
-                name,
-            },
-            beforeSend: function () {
-                $("#loading").addClass("d-grid");
-            },
-            success: function (data) {
-                $(".search-result-box").empty().html(data.result);
-            },
-            complete: function () {
-                $("#loading").removeClass("d-grid");
-            },
+        $input.on("input", function () {
+            const name = String($input.val() || "").trim();
+            const $form = $input.closest("form");
+            const $results = $form.find(".search-result-box").first().length
+                ? $form.find(".search-result-box").first()
+                : $form.nextAll(".search-result-box").first();
+
+            clearTimeout(searchTimer);
+            if (activeRequest) {
+                activeRequest.abort();
+                activeRequest = null;
+            }
+
+            if (!name) {
+                $results.empty().hide().removeAttr("aria-busy");
+                return;
+            }
+
+            $results.show().attr("aria-busy", "true");
+            searchTimer = setTimeout(function () {
+                const baseUrl = $('meta[name="base-url"]').attr("content");
+                const requestData = { name };
+
+                if ($input.is("#global-search")) {
+                    requestData.category_id = $("#search_category_value").val() || "all";
+                }
+
+                activeRequest = $.ajax({
+                    url: baseUrl + "/searched-products",
+                    method: "GET",
+                    dataType: "json",
+                    data: requestData,
+                })
+                    .done(function (data) {
+                        if (String($input.val() || "").trim() === name) {
+                            $results.html(data.result || "");
+                        }
+                    })
+                    .always(function () {
+                        if (String($input.val() || "").trim() === name) {
+                            $results.removeAttr("aria-busy");
+                        }
+                    });
+            }, 160);
         });
-    } else {
-        $(".search-result-box").empty();
-    }
-});
+    });
+}
+
+bindProductSearchSuggestions("#global-search, .search-bar-input-mobile");
 
 function cartQuantityInitialize() {
     $(".btn-number").click(function (e) {

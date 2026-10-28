@@ -50,21 +50,26 @@
                     <div class="col-xl-6">
                         <div class="row g-2 g-sm-3 mt-lg-0">
                             <div class="col-12">
-                                <div class="swiper-container shadow-sm rounded">
-                                    <div class="swiper" data-swiper-loop="{{count($bannerTypeMainBanner) >1 ? 'true' : ''}}"
+                                <div class="swiper-container shadow-sm rounded home-main-banner-container">
+                                    <div class="swiper home-main-banner-swiper" data-swiper-loop="{{count($bannerTypeMainBanner) >1 ? 'true' : ''}}"
                                          data-swiper-navigation-next="null" data-swiper-navigation-prev="null">
                                         <div class="swiper-wrapper max-height-420px">
                                             @foreach($bannerTypeMainBanner as $key=>$banner)
                                                 <div class="swiper-slide max-height-420px">
                                                     <a href="{{ $banner['url'] }}" class="h-100 rounded max-height-420px">
-                                                        <img loading="lazy" alt="" class="dark-support rounded max-height-420px"
+                                                        <img loading="{{ $key === 0 ? 'eager' : 'lazy' }}"
+                                                            fetchpriority="{{ $key === 0 ? 'high' : 'auto' }}"
+                                                            decoding="async" alt="" class="dark-support rounded max-height-420px"
                                                             src="{{ getStorageImages(path:$banner['photo_full_url'], type:'banner') }}">
                                                     </a>
                                                 </div>
                                             @endforeach
                                             @if(count($bannerTypeMainBanner)==0)
-                                                <img src="{{ theme_asset('assets/img/placeholder/placeholder-2-1.png') }}"
-                                                     loading="lazy" alt="" class="dark-support rounded">
+                                                <div class="swiper-slide max-height-420px">
+                                                    <img src="{{ theme_asset('assets/img/placeholder/placeholder-2-1.png') }}"
+                                                         loading="eager" fetchpriority="high" decoding="async"
+                                                         alt="" class="dark-support rounded max-height-420px">
+                                                </div>
                                             @endif
                                         </div>
                                         <div class="swiper-pagination"></div>

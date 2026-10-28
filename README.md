@@ -8,12 +8,11 @@ This repository contains the full Zulors Shop source in one place so future upda
 - `Zulors Shop User App` - Flutter customer app
 - `Zulors Shop Vendor App` - Flutter vendor app
 
-## Live Production Details
+## Production Target
 
-- Production domain: `https://shop.zulors.com`
-- Web root on server: `/var/www/zulors/data/www/shop.zulors.com`
 - GitHub repository: `https://github.com/sbayshop3171-ship-it/zulors_shop`
-- Auto-deploy source branch: `main`
+- Canonical branch: `main`
+- The previous server config in this repository points to `shop.zulors.com` and `/var/www/zulors/data/www/shop.zulors.com`. Confirm the live virtual host and app root before setting production variables; Actions intentionally has no default deploy path.
 
 ## What Is Stored In Git
 
@@ -29,43 +28,23 @@ This repository contains the full Zulors Shop source in one place so future upda
 - Laravel runtime storage uploads and cache files
 - `vendor`, `node_modules`, and local build artifacts
 
-## Day-To-Day Update Flow
+## Push and CI
 
-1. Make changes locally.
-2. Commit them:
-   `git add .`
-   `git commit -m "Describe the change"`
-3. Push to GitHub:
-   `git push origin main`
-4. Check the Actions tab for green/red status.
-5. The production server auto-checks GitHub every minute and deploys the latest `main` commit when it changes.
+Pushes to `main` and pull requests run `.github/workflows/repository-health.yml`. CI validates the Laravel Composer setup, lints PHP, runs PHPUnit, builds Laravel Mix assets, and resolves both Flutter apps' dependencies. A successful push build on `main` stores an immutable Laravel release artifact named for its commit SHA for 90 days.
 
-## Production Auto-Deploy
+Pushing does not run a GitHub Actions deployment. The existing server setup documented for this repository lists `* * * * * /root/zulors-auto-deploy.sh >> /var/log/zulors-auto-deploy.log 2>&1`; that cron must be removed or replaced before the first push, or it can still deploy independently of GitHub Actions. The versioned deploy script now exits without an explicit manual-deploy flag, but changing this repository alone does not update a copy already installed under `/root`.
 
-The server uses the versioned script below:
+## Manual Production Deployment
 
-- `scripts/zulors-auto-deploy.sh`
+Use **Actions → Manual Production Deploy → Run workflow** from `main`. The `confirm_live` checkbox defaults to false. When checked, the workflow selects the latest successful push build from `main`, downloads that run's SHA-matched artifact, verifies its checksum, deploys that exact release, and runs the configured HTTPS health check. Concurrent deployments are serialized.
 
-Installed production cron:
+The `production` GitHub environment must be configured before enabling deployment:
 
-- `* * * * * /root/zulors-auto-deploy.sh >> /var/log/zulors-auto-deploy.log 2>&1`
+- Environment secrets: `PRODUCTION_HOST`, `PRODUCTION_USER`, `PRODUCTION_SSH_PRIVATE_KEY`, `PRODUCTION_KNOWN_HOSTS`
+- Environment variables: `PRODUCTION_DEPLOYMENT_READY`, `PRODUCTION_APP_PATH`, `PRODUCTION_APP_OWNER`, `PRODUCTION_APP_GROUP`, `PRODUCTION_HEALTH_URL`
 
-Deploy behavior:
+Set `PRODUCTION_DEPLOYMENT_READY` to `true` only after the server's old auto-deploy cron is disabled, the app root and domain have been verified for this project, `scripts/zulors-auto-deploy.sh` is installed root-owned as `/usr/local/sbin/zulors-manual-deploy`, the deploy user has `sudo -n` permission for that command, and the SSH key is authorized. The app path must point to an existing Laravel root containing `artisan`. No secrets or private keys belong in the repository.
 
-- pulls latest `main`
-- syncs Laravel app source into the live web root
-- preserves `.env` and uploaded files
-- runs `composer install`
-- runs `php artisan migrate --force`
-- refreshes Laravel caches
+## Release Consistency and Rollback
 
-## Rollback
-
-Fast rollback can be done by reverting a bad commit on `main` and pushing again:
-
-```bash
-git revert <bad-commit-sha>
-git push origin main
-```
-
-The server will auto-deploy the reverted state on the next check.
+Each successful `main` build artifact is tied to one commit SHA. A later manual deployment selects one successful build and deploys that complete artifact, so separate pushes cannot be mixed into one release. To roll back, manually deploy an earlier successful artifact after verifying the desired SHA.

@@ -2664,3 +2664,44 @@ body *::-webkit-scrollbar-thumb {
 .text-secondary-body-color{
     color: var(--secondary-body-color);
 }
+
+.home-main-banner-container {
+    aspect-ratio: 2.2 / 1;
+    min-height: 220px;
+    max-height: 420px;
+}
+
+.home-main-banner-swiper,
+.home-main-banner-swiper .swiper-wrapper,
+.home-main-banner-swiper .swiper-slide {
+    height: 100%;
+}
+
+.home-main-banner-swiper .swiper-wrapper {
+    display: flex;
+}
+
+.home-main-banner-swiper .swiper-slide {
+    flex: 0 0 100%;
+    width: 100%;
+    max-height: 420px;
+}
+
+.home-main-banner-swiper .swiper-slide > a,
+.home-main-banner-swiper .swiper-slide > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.home-main-banner-swiper .swiper-slide img {
+    object-fit: cover;
+}
+
+@media (max-width: 575px) {
+    .home-main-banner-container {
+        aspect-ratio: 1.8 / 1;
+        min-height: 190px;
+        max-height: 310px;
+    }
+}
