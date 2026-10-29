@@ -107,6 +107,7 @@ class ProductDetailsController extends Controller
                 scope: 'active',
                 filters: ['added_by' => $product['added_by'] == 'admin' ? 'in_house' : $product['added_by'], 'seller_id' => $product['user_id']],
                 whereNotIn: ['id' => [$product['id']]],
+                withCount: ['reviews' => 'reviews', 'reviews_avg_rating' => 'reviews'],
                 dataLimit: 5,
                 offset: 1
             );
@@ -125,7 +126,7 @@ class ProductDetailsController extends Controller
                 scope: 'active',
                 filters: ['category_id' => $product['category_id']],
                 whereNotIn: ['id' => [$product['id']]],
-                relations: ['reviews' => 'reviews'],
+                withCount: ['reviews' => 'reviews', 'reviews_avg_rating' => 'reviews'],
                 dataLimit: 12,
                 offset: 1
             );

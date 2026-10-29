@@ -326,6 +326,11 @@ class ProductRepository implements ProductRepositoryInterface
                     return $query->active();
                 }]);
             })
+            ->when(isset($withCount['reviews_avg_rating']), function ($query) use ($withCount) {
+                return $query->withAvg([$withCount['reviews_avg_rating'] => function ($query) {
+                    return $query->active();
+                }], 'rating');
+            })
             ->when($withSum, function ($query) use ($withSum) {
                 foreach ($withSum as $sum) {
                     return $query->withSum($sum['relation'], $sum['column'], function ($query) use ($sum) {

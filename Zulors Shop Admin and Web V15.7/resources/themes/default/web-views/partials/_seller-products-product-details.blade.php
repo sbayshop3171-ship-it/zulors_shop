@@ -1,5 +1,8 @@
 @if(isset($product))
-@php($overallRating = getOverallRating($product?->reviews))
+@php($hasReviewAggregates = array_key_exists('reviews_avg_rating', $product->getAttributes()) && array_key_exists('reviews_count', $product->getAttributes()))
+@php($overallRating = $hasReviewAggregates
+    ? [$product->reviews_avg_rating ?? 0, $product->reviews_count ?? 0]
+    : getOverallRating($product?->reviews))
 <div class="flash_deal_product rtl cursor-pointer mb-2 get-view-by-onclick"
     data-link="{{ route('product',$product->slug) }}">
     @if($product->discount > 0)
