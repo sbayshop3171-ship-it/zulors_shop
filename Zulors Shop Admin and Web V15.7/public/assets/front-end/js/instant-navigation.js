@@ -8,6 +8,7 @@
     const maxConcurrentPrefetch = Math.max(1, Math.min(Number(config.maxConcurrentPrefetch || 2), 2));
     const maxTrackedPrefetches = 40;
     const prefetchTrackingTtl = 55 * 1000;
+    const cachePartitionStorageKey = "zulors-storefront-cache-partition";
     const prefetchedUrls = new Map();
     const pendingUrls = new Set();
     const automaticPrefetchedUrls = new Set();
@@ -17,6 +18,7 @@
     let activePrefetches = 0;
     let serviceWorkerRegistration = null;
     let scanQueued = false;
+    let progressShowTimer = null;
     let progressTimer = null;
 
     const eligiblePath = /^\/$|^\/product\/[^/]+\/?$|^\/products\/?$|^\/brand\/[^/]+\/?$|^\/category\/[^/]+\/?$|^\/(featured-products|featured-deal-products|latest-products|best-selling-products|top-rated-products|discounted-products|clearance-sale-products|brands|categories|vendors)\/?$|^\/flash-deals\/\d+\/?$/;
@@ -61,6 +63,87 @@
     function sendPartition() {
         if (!config.cachePartition) return;
         sendWorkerMessage({ type: "SET_CACHE_PARTITION", partition: config.cachePartition });
+    }
+
+    function clearPartitionCache(partition) {
+        if (/^[a-f0-9]{64}$/.test(partition || "")) {
+            sendWorkerMessage({ type: "CLEAR_PARTITION_CACHE", partition: partition });
+        }
+    }
+
+    function getPartitionStorage() {
+        try {
+            return window.localStorage || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    function resetPrefetchTracking() {
+        prefetchedUrls.clear();
+        automaticPrefetchedUrls.clear();
+        queue.length = 0;
+        pendingUrls.clear();
+        document.querySelectorAll("a[href], .get-view-by-onclick[data-link], [data-prefetch-url]").forEach(function (target) {
+            delete target.dataset.prefetchObserved;
+        });
+        queueVisibleTargetScan();
+    }
+
+    function setCachePartition(partition, broadcast) {
+        if (!/^[a-f0-9]{64}$/.test(partition || "")) return false;
+
+        const previousPartition = config.cachePartition;
+        if (previousPartition !== partition) {
+            clearPartitionCache(previousPartition);
+            config.cachePartition = partition;
+            sendPartition();
+            resetPrefetchTracking();
+        }
+
+        const storage = getPartitionStorage();
+        if (broadcast && storage) {
+            try {
+                storage.setItem(cachePartitionStorageKey, partition);
+            } catch (error) {
+                // Private browsing modes may deny storage; the current page still works.
+            }
+        }
+
+        return true;
+    }
+
+    function synchronizeInitialPartition() {
+        const storage = getPartitionStorage();
+        if (!/^[a-f0-9]{64}$/.test(config.cachePartition || "") || !storage) return;
+
+        try {
+            const previousPartition = storage.getItem(cachePartitionStorageKey);
+            if (previousPartition && previousPartition !== config.cachePartition) {
+                clearPartitionCache(previousPartition);
+            }
+            storage.setItem(cachePartitionStorageKey, config.cachePartition);
+        } catch (error) {
+            // Service-worker caching remains partitioned even if storage is unavailable.
+        }
+    }
+
+    function refreshCachePartition() {
+        if (!config.partitionUrl || typeof window.fetch !== "function") return Promise.resolve();
+
+        return window.fetch(config.partitionUrl, {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: { Accept: "application/json" },
+        }).then(function (response) {
+            if (!response.ok) throw new Error("Could not refresh the storefront cache partition");
+            return response.json();
+        }).then(function (data) {
+            setCachePartition(data.partition, true);
+        }).catch(function () {
+            // A stale partition cannot match the server marker, so navigation safely falls back to Laravel.
+        });
     }
 
     function startPrefetch(rawUrl, highPriority) {
@@ -171,6 +254,7 @@
         navigator.serviceWorker.register(config.serviceWorkerUrl, { scope: "/" })
             .then(function (registration) {
                 serviceWorkerRegistration = registration;
+                synchronizeInitialPartition();
                 sendPartition();
                 registration.addEventListener("updatefound", sendPartition);
             })
@@ -178,6 +262,7 @@
 
         navigator.serviceWorker.ready.then(function (registration) {
             serviceWorkerRegistration = registration;
+            synchronizeInitialPartition();
             sendPartition();
         }).catch(function () { serviceWorkerRegistration = null; });
 
@@ -225,14 +310,33 @@
     }
 
     function showNavigationFeedback() {
-        const bar = ensureProgressBar();
-        bar.classList.remove("is-complete");
-        bar.classList.add("is-visible");
+        if (progressShowTimer) window.clearTimeout(progressShowTimer);
         if (progressTimer) window.clearTimeout(progressTimer);
+
+        // Most prefetched navigations finish before this delay, so they do not flash a loader.
+        progressShowTimer = window.setTimeout(function () {
+            const bar = ensureProgressBar();
+            bar.classList.remove("is-complete");
+            bar.classList.add("is-visible");
+        }, 120);
         progressTimer = window.setTimeout(function () {
+            const bar = document.getElementById("zulors-navigation-progress");
+            if (!bar) return;
             bar.classList.add("is-complete");
             bar.classList.remove("is-visible");
-        }, 1800);
+        }, 1920);
+    }
+
+    function clearNavigationFeedback() {
+        if (progressShowTimer) window.clearTimeout(progressShowTimer);
+        if (progressTimer) window.clearTimeout(progressTimer);
+        progressShowTimer = null;
+        progressTimer = null;
+        const bar = document.getElementById("zulors-navigation-progress");
+        if (bar) {
+            bar.classList.remove("is-visible");
+            bar.classList.add("is-complete");
+        }
     }
 
     document.addEventListener("pointerover", function (event) {
@@ -246,6 +350,9 @@
     }, { passive: true, capture: true });
 
     document.addEventListener("click", function (event) {
+        if (event.defaultPrevented || (event.button !== undefined && event.button !== 0)
+            || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
         const url = getPrefetchUrl(event.target);
         if (url) {
             startPrefetch(url, true);
@@ -262,16 +369,28 @@
     }
 
     window.clearZulorsPrefetchedPages = function () {
-        sendWorkerMessage({ type: "CLEAR_PARTITION_CACHE" });
-        prefetchedUrls.clear();
-        automaticPrefetchedUrls.clear();
-        queue.length = 0;
-        pendingUrls.clear();
-        document.querySelectorAll("a[href], .get-view-by-onclick[data-link], [data-prefetch-url]").forEach(function (target) {
-            delete target.dataset.prefetchObserved;
-        });
-        queueVisibleTargetScan();
+        clearPartitionCache(config.cachePartition);
+        resetPrefetchTracking();
     };
+
+    window.addEventListener("storage", function (event) {
+        if (event.key === cachePartitionStorageKey && event.newValue) {
+            setCachePartition(event.newValue, false);
+        }
+    });
+
+    window.addEventListener("pageshow", function (event) {
+        clearNavigationFeedback();
+        if (!event.persisted) return;
+
+        refreshCachePartition();
+        if (window.jQuery && typeof window.updateNavCart === "function"
+            && document.getElementById("route-cart-nav-cart")) {
+            window.updateNavCart();
+        }
+    });
+
+    window.addEventListener("pagehide", clearNavigationFeedback);
 
     if (window.jQuery) {
         const stateChangingEndpoints = [
@@ -303,7 +422,10 @@
                 }
             });
 
-            if (changesCachedStorefrontState) window.clearZulorsPrefetchedPages();
+            if (changesCachedStorefrontState) {
+                window.clearZulorsPrefetchedPages();
+                refreshCachePartition();
+            }
         });
     }
 

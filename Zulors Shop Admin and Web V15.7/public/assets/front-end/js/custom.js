@@ -843,70 +843,68 @@ function order_again(orderId) {
     });
 }
 
-$(".search-bar-input-mobile").keyup(function () {
-    $(".search-card").css("display", "block");
-    let name = $(".search-bar-input-mobile").val();
-    if (name.length > 0) {
-        $.get({
-            url: $("#route-searched-products").data("url"),
-            dataType: "json",
-            data: {
-                name: name,
-            },
-            beforeSend: function () {
-                $("#loading").show();
-            },
-            success: function (data) {
-                $(".search-result-box").empty().html(data.result);
-                $(".search-result-product").on("mouseover", function () {
-                    $(".search-bar-input-mobile").val(
-                        $(this).data("product-name")
-                    );
-                });
-            },
-            complete: function () {
-                $("#loading").hide();
-            },
-        });
-    } else {
-        $(".search-result-box").empty();
-    }
-});
+function bindInstantProductSearch(selector, isMobile) {
+    $(selector).on("input", function () {
+        const searchInput = $(this);
+        const searchForm = searchInput.closest("form");
+        const resultBox = searchForm.find(".search-result-box");
+        const searchCard = searchForm.find(".search-card");
+        const name = String(searchInput.val() || "").trim();
 
-$(".search-bar-input").keyup(function () {
-    let searchBarInputElement = $(".search-bar-input");
-    $(".search-card").css("display", "block");
-    let name = searchBarInputElement.val();
-    searchBarInputElement.data("given-value", name);
-    if (name.length > 0) {
-        $.get({
-            url: $("#route-searched-products").data("url"),
-            dataType: "json",
-            data: {
-                name: name,
-            },
-            beforeSend: function () {
-                $("#loading").show();
-            },
-            success: function (data) {
-                $(".search-result-box").empty().html(data.result);
-                $(".search-result-product").on("mouseover", function () {
-                    searchBarInputElement.val($(this).data("product-name"));
+        searchInput.data("given-value", name);
+        if (searchInput.data("search-timer")) {
+            clearTimeout(searchInput.data("search-timer"));
+            searchInput.removeData("search-timer");
+        }
+        const previousRequest = searchInput.data("search-request");
+        if (previousRequest && previousRequest.readyState !== 4) {
+            previousRequest.abort();
+        }
+        searchInput.removeData("search-request");
+
+        if (!name) {
+            resultBox.empty().removeAttr("aria-busy");
+            searchCard.hide();
+            return;
+        }
+
+        searchCard.show();
+        resultBox.attr("aria-busy", "true");
+        const timer = setTimeout(function () {
+            searchInput.removeData("search-timer");
+            const request = $.get({
+                url: $("#route-searched-products").data("url"),
+                dataType: "json",
+                data: { name: name },
+            });
+            searchInput.data("search-request", request);
+
+            request.done(function (data) {
+                if (String(searchInput.val() || "").trim() !== name) return;
+                resultBox.empty().html(data.result);
+                resultBox.find(".search-result-product").on("mouseover", function () {
+                    searchInput.val($(this).data("product-name"));
                 });
-                $(".search-result-product").on("mouseleave", function () {
-                    searchBarInputElement.val(
-                        searchBarInputElement.data("given-value")
-                    );
-                });
-            },
-            complete: function () {
-                $("#loading").hide();
-            },
-        });
-    } else {
-        $(".search-result-box").empty();
-    }
-});
+                if (!isMobile) {
+                    resultBox.find(".search-result-product").on("mouseleave", function () {
+                        searchInput.val(searchInput.data("given-value"));
+                    });
+                }
+            });
+
+            request.always(function () {
+                if (searchInput.data("search-request") === request) {
+                    searchInput.removeData("search-request");
+                    resultBox.removeAttr("aria-busy");
+                }
+            });
+        }, 120);
+        searchInput.data("search-timer", timer);
+    });
+}
+
+bindInstantProductSearch(".search-bar-input-mobile", true);
+bindInstantProductSearch(".search-bar-input", false);
 
 $(".clickable").click(function () {
     window.location = $(this).find("a").attr("href");

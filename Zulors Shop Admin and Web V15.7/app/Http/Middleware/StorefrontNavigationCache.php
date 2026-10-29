@@ -57,16 +57,14 @@ class StorefrontNavigationCache
             $response->headers->set('Cache-Control', 'private, no-store, max-age=0');
 
             if (!$hasTransientPageState && !$homepagePopupHasNotBeenConsumed) {
-                $partition = hash_hmac(
-                    'sha256',
-                    $session->getId() . '|' . serialize($session->all()) . '|'
-                        . (string) $request->user('customer')?->getAuthIdentifier() . '|'
-                        . (string) getDefaultLanguage(),
-                    (string) config('app.key')
-                );
-
-                $response->headers->set('X-Zulors-Cacheable', 'session');
-                $response->headers->set('X-Zulors-Cache-Partition', $partition);
+                $partition = self::partitionFor($request);
+                if ($partition !== null) {
+                    $response->headers->set('X-Zulors-Cacheable', 'session');
+                    $response->headers->set('X-Zulors-Cache-Partition', $partition);
+                } else {
+                    $response->headers->remove('X-Zulors-Cacheable');
+                    $response->headers->remove('X-Zulors-Cache-Partition');
+                }
             } else {
                 $response->headers->remove('X-Zulors-Cacheable');
                 $response->headers->remove('X-Zulors-Cache-Partition');
@@ -74,5 +72,22 @@ class StorefrontNavigationCache
         }
 
         return $response;
+    }
+
+    public static function partitionFor(Request $request): ?string
+    {
+        if (!$request->hasSession()) {
+            return null;
+        }
+
+        $session = $request->session();
+
+        return hash_hmac(
+            'sha256',
+            $session->getId() . '|' . serialize($session->all()) . '|'
+                . (string) $request->user('customer')?->getAuthIdentifier() . '|'
+                . (string) getDefaultLanguage(),
+            (string) config('app.key')
+        );
     }
 }

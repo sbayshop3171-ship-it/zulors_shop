@@ -64,7 +64,9 @@ self.addEventListener("message", function (event) {
     }
 
     if (data.type === "CLEAR_PARTITION_CACHE" && clientId) {
-        const partition = clientPartitions.get(clientId);
+        const partition = /^[a-f0-9]{64}$/.test(data.partition || "")
+            ? data.partition
+            : clientPartitions.get(clientId);
         if (partition) {
             partitionCacheEpochs.set(partition, getPartitionCacheEpoch(partition) + 1);
             event.waitUntil(clearPartitionCache(partition));

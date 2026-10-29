@@ -40,7 +40,9 @@ use App\Http\Controllers\Web\UserLoyaltyController;
 use App\Http\Controllers\Web\UserProfileController;
 use App\Http\Controllers\Web\UserWalletController;
 use App\Http\Controllers\Web\WebController;
+use App\Http\Middleware\StorefrontNavigationCache;
 use App\Http\Middleware\VerifyCsrfToken;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -85,6 +87,12 @@ Route::group(['namespace' => 'Web', 'middleware' => ['maintenance_mode', 'guestC
             ->whereNumber('id')
             ->name('home-section');
     });
+
+    Route::get('storefront/navigation-context', function (Request $request) {
+        return response()->json([
+            'partition' => StorefrontNavigationCache::partitionFor($request),
+        ])->header('Cache-Control', 'private, no-store, max-age=0');
+    })->middleware('throttle:60,1')->name('storefront.navigation-context');
 
     Route::controller(WebController::class)->group(function () {
         Route::get('quick-view', 'getQuickView')->name('quick-view');
