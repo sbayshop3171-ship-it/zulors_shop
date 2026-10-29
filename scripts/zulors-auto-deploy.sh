@@ -20,6 +20,12 @@ LIVE_APP_DIR="$4"
 APP_OWNER="$5"
 APP_GROUP="$6"
 
+# Keep this repository's privileged deployment isolated from other apps on the host.
+if [[ "$LIVE_APP_DIR" != "/var/www/zulors/data/www/shop.zulors.com" || "$APP_OWNER" != "zulors" || "$APP_GROUP" != "zulors" ]]; then
+  echo "Deployment target does not match the Zulors Shop production app." >&2
+  exit 1
+fi
+
 if [[ ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
   echo "Invalid deployment commit SHA." >&2
   exit 1

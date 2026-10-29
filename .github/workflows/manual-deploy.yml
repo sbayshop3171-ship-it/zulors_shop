@@ -1,6 +1,13 @@
-name: Manual Production Deploy
+name: Production Deploy
 
 on:
+  workflow_run:
+    workflows:
+      - Repository Health
+    types:
+      - completed
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       confirm_live:
@@ -19,7 +26,14 @@ concurrency:
 
 jobs:
   deploy:
-    if: inputs.confirm_live == true
+    if: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.confirm_live == true) ||
+        (github.event_name == 'workflow_run' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.conclusion == 'success')
+      }}
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -33,11 +47,26 @@ jobs:
       PRODUCTION_APP_GROUP: ${{ vars.PRODUCTION_APP_GROUP }}
       PRODUCTION_HEALTH_URL: ${{ vars.PRODUCTION_HEALTH_URL }}
     steps:
-      - name: Check manual deploy configuration
+      - name: Validate deploy source and configuration
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SOURCE_BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
+          SOURCE_EVENT: ${{ github.event.workflow_run.event || github.event_name }}
+          SOURCE_CONCLUSION: ${{ github.event.workflow_run.conclusion || 'success' }}
         run: |
-          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "Dispatch this workflow from main; production only deploys main builds." >&2
+          if [[ "$EVENT_NAME" == "workflow_run" ]]; then
+            if [[ "$SOURCE_BRANCH" != "main" || "$SOURCE_EVENT" != "push" || "$SOURCE_CONCLUSION" != "success" ]]; then
+              echo "Production only deploys successful main-branch push builds." >&2
+              exit 1
+            fi
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ "$SOURCE_BRANCH" != "main" || "$GITHUB_REF" != "refs/heads/main" ]]; then
+              echo "Dispatch this workflow from main; production only deploys main builds." >&2
+              exit 1
+            fi
+          else
+            echo "Unsupported production deployment event." >&2
             exit 1
           fi
           if [[ "$PRODUCTION_DEPLOYMENT_READY" != "true" ]]; then
@@ -57,6 +86,9 @@ jobs:
           [[ "$PRODUCTION_APP_OWNER" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "PRODUCTION_APP_OWNER has an invalid format." >&2; exit 1; }
           [[ "$PRODUCTION_APP_GROUP" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "PRODUCTION_APP_GROUP has an invalid format." >&2; exit 1; }
           [[ "$PRODUCTION_HEALTH_URL" == https://* ]] || { echo "PRODUCTION_HEALTH_URL must use HTTPS." >&2; exit 1; }
+          [[ "$PRODUCTION_APP_PATH" == "/var/www/zulors/data/www/shop.zulors.com" ]] || { echo "Production path does not match this Zulors project." >&2; exit 1; }
+          [[ "$PRODUCTION_APP_OWNER" == "zulors" && "$PRODUCTION_APP_GROUP" == "zulors" ]] || { echo "Production ownership does not match this Zulors project." >&2; exit 1; }
+          [[ "$PRODUCTION_HEALTH_URL" == "https://shop.zulors.com" || "$PRODUCTION_HEALTH_URL" == "https://shop.zulors.com/" ]] || { echo "Production health URL does not match this Zulors domain." >&2; exit 1; }
 
       - name: Select latest successful main build
         id: release
