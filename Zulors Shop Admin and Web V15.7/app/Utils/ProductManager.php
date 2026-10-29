@@ -1039,7 +1039,25 @@ class ProductManager
                 $query = $query->orderBy('name', 'desc');
             }
 
-            $query = $query->where(['featured' => 1])->get();
+            $query = $query->where(['featured' => 1]);
+
+            // When neither priority needs a post-query collection reorder, let the
+            // database paginate the featured list instead of loading every match
+            // into PHP just to return one page.
+            $requiresCollectionSort = ($featuredProductSortBy['out_of_stock_product'] ?? null) == 'desc'
+                || ($featuredProductSortBy['temporary_close_sorting'] ?? null) == 'desc'
+                || in_array($featuredProductSortBy['sort_by'] ?? null, ['a_to_z', 'z_to_a'], true);
+
+            if ($dataLimit != 'all' && !$requiresCollectionSort) {
+                $currentPage = $offset ?? Paginator::resolveCurrentPage('page');
+                $paginator = $query->paginate($dataLimit, ['*'], 'page', $currentPage);
+                if (!empty($appends)) {
+                    $paginator->appends($appends);
+                }
+                return $paginator;
+            }
+
+            $query = $query->get();
 
             if ($featuredProductSortBy['out_of_stock_product'] == 'desc') {
                 $query = self::mergeStockAndOutOfStockProduct(query: $query);
@@ -1575,7 +1593,7 @@ class ProductManager
         $flashDealSortBy = getWebConfig(name: 'flash_deal_priority');
 
         $query = $query->flashDeal($flashDeal['id'])
-            ->with(['seller.shop', 'rating', 'reviews'])
+            ->with(['seller.shop', 'rating'])
             ->withCount(['orderDetails', 'reviews'])
             ->withAvg('reviews', 'rating');
 
@@ -1589,6 +1607,27 @@ class ProductManager
                         $query->where('product_type', 'physical')->where('current_stock', '>', 0);
                     });
                 });
+            }
+
+            $requiresCollectionSort = ($flashDealSortBy['out_of_stock_product'] ?? null) == 'desc'
+                || ($flashDealSortBy['temporary_close_sorting'] ?? null) == 'desc'
+                || in_array($flashDealSortBy['sort_by'] ?? null, ['a_to_z', 'z_to_a'], true);
+
+            if (!$requiresCollectionSort) {
+                $orderColumn = match ($flashDealSortBy['sort_by'] ?? null) {
+                    'latest_created' => 'id',
+                    'first_created' => 'id',
+                    'most_order' => 'order_details_count',
+                    'reviews_count' => 'reviews_count',
+                    'rating' => 'reviews_avg_rating',
+                    default => null,
+                };
+
+                if ($orderColumn !== null) {
+                    $query->orderBy($orderColumn, ($flashDealSortBy['sort_by'] ?? null) == 'first_created' ? 'asc' : 'desc');
+                }
+
+                return $query->limit(10)->get();
             }
 
             $query = $query->get();
@@ -1619,7 +1658,10 @@ class ProductManager
             return $query;
         }
 
-        return $query->get();
+        // The homepage and flash-deal listing both display at most ten items.
+        // Apply that bound in SQL so a large deal does not hydrate every product
+        // and review before the caller takes the first ten.
+        return $query->limit(10)->get();
     }
 
     public static function getPriorityWiseTopVendorQuery($query)
